@@ -22,13 +22,74 @@ YieldAgent is organized around six pillars. Every adtech agent, regardless of ro
 5. **Evaluation loop.** Performance data is wired back as the reward signal, so agents are measured and improved against real outcomes rather than vibes.
 6. **Human-in-the-loop and audit trail.** Approval gates above configurable thresholds and an immutable log of every spend-affecting action, with rationale. Non-negotiable when real money is moving.
 
-## Roadmap
+## First vertical slice — campaign setup on Meta
 
-The first milestone is a single vertical slice — a campaign-setup agent that reads a brief and produces a draft campaign in one platform, end to end — exercised against the foundation above. Forcing one slice through all six layers is what turns the design into a real system. Additional roles, platforms, and supply-side workflows stack on top of that loop.
+The first milestone forces all six pillars through one concrete workflow: a campaign-setup agent that reads a markdown brief and produces a paused draft campaign on Meta (Facebook + Instagram), end to end. What it exercises:
+
+- **Domain model** (`src/yieldagent/domain/`) — platform-neutral `Brief` and `Campaign` types.
+- **Integration layer** (`src/yieldagent/integrations/meta/`) — an MCP server over the Meta Marketing API that refuses to write to live ad accounts by default.
+- **Role with scoped authority** — the publish step only creates `PAUSED` objects; flipping anything live is out of scope for the agent.
+- **State and audit** — every node appends an `AuditEntry`; the full trail is printed at the end of each run.
+- **Human-in-the-loop** — a LangGraph `interrupt()` between planning and publishing. The agent stops, surfaces the draft, and waits for an approval decision before touching the platform.
+
+Additional roles (optimization, reporting), platforms (Google, TikTok, DV360), and supply-side workflows stack on top of the same foundation.
+
+### Quick start
+
+Prerequisites: Python 3.11+, a Meta Business Manager **test ad account**, a system user access token with `ads_management` scope, and an Anthropic API key.
+
+```bash
+# 1. Install with the meta integration and the agent extras
+pip install -e ".[meta,agent]"
+
+# 2. Configure credentials
+cp .env.example .env
+# edit .env: META_ACCESS_TOKEN, META_AD_ACCOUNT_ID, META_PAGE_ID, ANTHROPIC_API_KEY
+
+# 3. Run the agent against the example brief
+set -a; source .env; set +a
+python -m yieldagent.agents.campaign_setup briefs/example_brief.md
+```
+
+The agent will print the planned draft, ask for approval on stdin, and — if you approve — create the campaign, ad sets, and ads on Meta in `PAUSED` state. The Meta MCP server refuses non-test accounts unless you set `YIELDAGENT_ALLOW_LIVE=1`.
+
+For CI / smoke tests pass `--auto-approve` to skip the gate. **Do not** combine `--auto-approve` with `YIELDAGENT_ALLOW_LIVE=1`.
+
+### Repository layout
+
+```
+src/yieldagent/
+  domain/                       # Pillar 1 — platform-neutral types
+    brief.py                    # Brief, Audience, CreativeAsset, Money, KPI
+    campaign.py                 # Campaign, LineItem, Ad, CampaignStatus
+  integrations/meta/            # Pillar 2 — Meta Marketing API
+    client.py                   # Async HTTP client (writes default to PAUSED)
+    config.py                   # Env-driven config + live-account guard
+    mapping.py                  # Domain ↔ Meta payload translation
+    server.py                   # MCP server exposing the tools
+  agents/campaign_setup/        # First vertical slice
+    graph.py                    # LangGraph wiring with human gate
+    nodes.py                    # parse_brief, plan_campaign, human_gate, publish_draft
+    prompts.py                  # System prompts for the planner LLM
+    state.py                    # AgentState + AuditEntry
+    cli.py                      # Interactive CLI entry point
+briefs/
+  example_brief.md              # Reference brief for the example run
+docs/
+  campaign-setup-agent.md       # Graph topology, safety model, embedding
+  meta-integration.md           # MCP tools, env, test-account guard, mapping
+  brief-format.md               # What a Brief looks like and how it's parsed
+```
+
+## Documentation
+
+- [Campaign-setup agent](docs/campaign-setup-agent.md) — graph topology, safety guarantees, how to embed it.
+- [Meta integration](docs/meta-integration.md) — MCP server, environment, mapping, known limits.
+- [Brief format](docs/brief-format.md) — what the planner LLM expects and how to write briefs that round-trip cleanly.
 
 ## Status
 
-Early. The repository is intentionally minimal while the design is shaped in the open. Issues, discussions, and proposals are welcome.
+Early. One vertical slice is working end to end against Meta test accounts; the rest of the platform matrix and the supply-side workflows are not built yet. The repository is intentionally minimal while the design is shaped in the open. Issues, discussions, and proposals are welcome.
 
 ## License
 
