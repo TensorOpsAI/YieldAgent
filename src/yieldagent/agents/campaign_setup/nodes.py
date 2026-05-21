@@ -1,0 +1,134 @@
+"""Graph nodes for the campaign-setup agent."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.types import interrupt
+
+from yieldagent.domain import Brief, Campaign, CampaignStatus
+
+from .prompts import PARSE_BRIEF_SYSTEM, PLAN_CAMPAIGN_SYSTEM
+from .state import AgentState, AuditEntry
+
+DEFAULT_MODEL = "claude-sonnet-4-6"
+
+
+def _audit(state: AgentState, entry: AuditEntry) -> list[AuditEntry]:
+    return [*state.get("audit", []), entry]
+
+
+def make_parse_brief_node(model_name: str = DEFAULT_MODEL):
+    model = ChatAnthropic(model_name=model_name).with_structured_output(Brief)
+
+    async def parse_brief(state: AgentState) -> dict[str, Any]:
+        brief = await model.ainvoke(
+            [
+                SystemMessage(content=PARSE_BRIEF_SYSTEM),
+                HumanMessage(content=state["brief_text"]),
+            ]
+        )
+        return {
+            "brief": brief,
+            "audit": _audit(
+                state,
+                AuditEntry(
+                    node="parse_brief",
+                    summary=f"Parsed brief for {brief.advertiser} / {brief.product}",
+                    detail={"platforms": brief.platforms, "objective": brief.objective.value},
+                ),
+            ),
+        }
+
+    return parse_brief
+
+
+def make_plan_campaign_node(model_name: str = DEFAULT_MODEL):
+    model = ChatAnthropic(model_name=model_name).with_structured_output(Campaign)
+
+    async def plan_campaign(state: AgentState) -> dict[str, Any]:
+        brief = state["brief"]
+        campaign = await model.ainvoke(
+            [
+                SystemMessage(content=PLAN_CAMPAIGN_SYSTEM),
+                HumanMessage(content=brief.model_dump_json(indent=2)),
+            ]
+        )
+        # Defense in depth: even if the model ignores the prompt, drafts must be paused.
+        if campaign.status == CampaignStatus.active:
+            campaign = campaign.model_copy(update={"status": CampaignStatus.draft})
+        return {
+            "campaign": campaign,
+            "audit": _audit(
+                state,
+                AuditEntry(
+                    node="plan_campaign",
+                    summary=(
+                        f"Planned {len(campaign.line_items)} line item(s) "
+                        f"and {len(campaign.ads)} ad(s)"
+                    ),
+                    detail={"campaign_name": campaign.name, "status": campaign.status.value},
+                ),
+            ),
+        }
+
+    return plan_campaign
+
+
+def human_gate(state: AgentState) -> dict[str, Any]:
+    """Pause for human approval. Pillar 6: nothing spend-affecting without a gate."""
+    campaign = state["campaign"]
+    decision = interrupt(
+        {
+            "question": "Approve this draft campaign?",
+            "campaign": campaign.model_dump(mode="json"),
+        }
+    )
+    approved = bool(decision.get("approved"))
+    reason = decision.get("reason", "")
+    return {
+        "approved": approved,
+        "rejection_reason": "" if approved else reason,
+        "audit": _audit(
+            state,
+            AuditEntry(
+                node="human_gate",
+                summary="Approved" if approved else f"Rejected: {reason}",
+                detail={"approved": approved, "reason": reason},
+            ),
+        ),
+    }
+
+
+def route_after_gate(state: AgentState) -> str:
+    return "publish_draft" if state.get("approved") else "__end__"
+
+
+def make_publish_draft_node(get_mcp_tool):
+    """Build the publish node, parameterized by how to fetch the MCP tool.
+
+    Indirection lets tests pass a fake tool without standing up a real MCP server.
+    """
+
+    async def publish_draft(state: AgentState) -> dict[str, Any]:
+        tool = await get_mcp_tool("publish_draft_campaign")
+        result = await tool.ainvoke({"campaign": state["campaign"].model_dump(mode="json")})
+        return {
+            "publish_result": result,
+            "audit": _audit(
+                state,
+                AuditEntry(
+                    node="publish_draft",
+                    summary=(
+                        f"Published draft campaign {result.get('campaign_id')} "
+                        f"with {len(result.get('line_items', []))} line item(s) "
+                        f"and {len(result.get('ads', []))} ad(s)"
+                    ),
+                    detail=result,
+                ),
+            ),
+        }
+
+    return publish_draft
