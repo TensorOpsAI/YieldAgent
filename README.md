@@ -57,6 +57,37 @@ For CI / smoke tests pass `--auto-approve` to skip the human gate. **Never combi
 
 There's also a notebook walkthrough at [`notebooks/campaign_setup.ipynb`](notebooks/campaign_setup.ipynb) that runs the slice end-to-end against a test account, renders the graph, and prints the audit trail cell-by-cell.
 
+## Run the workspace interface
+
+The `web/` app is a Next.js interface for the governed campaign-operations workspace: dashboard, agent console, connections, target profiles, campaign briefs, tool registry, approvals, and audit log.
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000` to use the local workspace shell. The interface starts empty and reads connection state from local API routes rather than seeded demo data.
+
+To onboard LinkedIn Ads locally, create a LinkedIn Developer app with Advertising API access and add this redirect URL:
+
+```text
+http://localhost:3000/api/oauth/linkedin/callback
+```
+
+Then set the following env vars before starting the web app:
+
+```bash
+LINKEDIN_CLIENT_ID=...
+LINKEDIN_CLIENT_SECRET=...
+LINKEDIN_REDIRECT_URI=http://localhost:3000/api/oauth/linkedin/callback
+LINKEDIN_OAUTH_SCOPES="r_ads r_ads_reporting"
+LINKEDIN_API_VERSION=202605
+YIELDAGENT_SECRET_KEY="$(openssl rand -hex 32)"
+```
+
+OAuth tokens are stored in `.yieldagent/connections.json` encrypted with `YIELDAGENT_SECRET_KEY`; the app only displays redacted credential references.
+
 ## Use cases
 
 ### Working today
@@ -119,6 +150,8 @@ docs/
   meta-integration.md           # MCP tools, env, test-account guard, mapping
   brief-format.md               # What a Brief looks like and how it's parsed
   img/campaign_setup_graph.png  # Rendered LangGraph topology
+web/
+  app/                          # Next.js workspace interface
 ```
 
 ## Documentation
