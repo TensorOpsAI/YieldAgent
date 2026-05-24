@@ -67,26 +67,22 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` to use the local workspace shell. The interface starts empty and reads connection state from local API routes rather than seeded demo data.
+Open `http://localhost:3000`. The interface starts empty and reads connection state from local API routes rather than seeded demo data.
 
-To onboard LinkedIn Ads locally, create a LinkedIn Developer app with Advertising API access and add this redirect URL:
+### Connect an ads platform
 
-```text
-http://localhost:3000/api/oauth/linkedin/callback
-```
+Provider OAuth credentials are entered through the UI — there's no env-var prerequisite.
 
-Then set the following env vars before starting the web app:
+1. Create an OAuth app in the provider's developer console (LinkedIn Developer, Meta for Developers, or Google Cloud Console). The drawer in step 3 links to the right docs page per provider.
+2. Register `http://localhost:3000/api/oauth/<provider>/callback` as an authorized redirect URL on that app. The drawer displays this URL with a copy button.
+3. In the workspace, open **Connections → Setup**, paste Client ID + Client Secret (Google Ads also asks for a Developer Token and an optional Manager Customer ID), and save.
+4. Click **Connect** to run the OAuth flow.
 
-```bash
-LINKEDIN_CLIENT_ID=...
-LINKEDIN_CLIENT_SECRET=...
-LINKEDIN_REDIRECT_URI=http://localhost:3000/api/oauth/linkedin/callback
-LINKEDIN_OAUTH_SCOPES="r_ads r_ads_reporting"
-LINKEDIN_API_VERSION=202605
-YIELDAGENT_SECRET_KEY="$(openssl rand -hex 32)"
-```
+Saved credentials are AES-256-GCM-encrypted in `.yieldagent/connections.json`. The encryption key lives in `.yieldagent/secret.key` (auto-generated on first save with mode `0600`), so no manual key setup is required. To rotate or supply your own key, set `YIELDAGENT_SECRET_KEY` (32+ chars) before starting the app.
 
-OAuth tokens are stored in `.yieldagent/connections.json` encrypted with `YIELDAGENT_SECRET_KEY`; the app only displays redacted credential references.
+Env vars (`LINKEDIN_CLIENT_ID`, `META_APP_ID`, `GOOGLE_ADS_CLIENT_ID`, etc.) are still honored as optional fallbacks for scripted/CI setups — see `.env.example`.
+
+> Status: LinkedIn OAuth start + callback routes are wired. Meta and Google Ads can save credentials through the UI, but their OAuth routes are not yet implemented.
 
 ## Use cases
 
