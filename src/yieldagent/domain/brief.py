@@ -56,6 +56,32 @@ class Audience(BaseModel):
     interests: list[str] = Field(default_factory=list)
     exclusions: list[str] = Field(default_factory=list)
 
+    # B2B targeting facets — used by LinkedIn, ignored by consumer platforms.
+    industries: list[str] = Field(
+        default_factory=list,
+        description="Industry names (e.g. 'Software Development', 'Financial Services'). LinkedIn resolves these to URNs.",
+    )
+    job_functions: list[str] = Field(
+        default_factory=list,
+        description="Job functions (e.g. 'Engineering', 'Marketing', 'Sales').",
+    )
+    job_titles: list[str] = Field(
+        default_factory=list,
+        description="Free-form job titles (e.g. 'VP of Engineering'). LinkedIn resolves to title URNs.",
+    )
+    seniorities: list[str] = Field(
+        default_factory=list,
+        description="Seniority levels (e.g. 'Manager', 'Director', 'VP', 'CXO', 'Owner').",
+    )
+    company_sizes: list[str] = Field(
+        default_factory=list,
+        description="LinkedIn staff-count buckets, e.g. '11-50', '51-200', '1001-5000', '10001+'.",
+    )
+    skills: list[str] = Field(
+        default_factory=list,
+        description="Skill keywords (e.g. 'Kubernetes', 'Demand Generation'). LinkedIn resolves to skill URNs.",
+    )
+
 
 class CreativeAsset(BaseModel):
     name: str
