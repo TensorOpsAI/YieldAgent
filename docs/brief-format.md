@@ -63,6 +63,52 @@ The markdown format in `briefs/example_brief.md` is a recommendation, not a requ
 - One `Ad` per creative. Each `Ad.line_item_name` must reference an existing `LineItem.name` — this is how creatives get attached to line items before any platform IDs exist.
 - Audience is carried through to `LineItem.targeting.audience` unchanged unless the Brief specifies sub-audience splits.
 
+## Worked example — Brief → Campaign
+
+Using the reference [`briefs/example_brief.md`](../briefs/example_brief.md) (Glow Roast "Midnight Brew" launch):
+
+| Brief input | Lands in planned `Campaign` as |
+|---|---|
+| `advertiser: "Glow Roast Coffee"`, `product: "Midnight Brew"` | `Campaign.name` — e.g. `"Glow Roast — Midnight Brew Launch (Jun 2026)"` (notes inform naming) |
+| `objective: sales` | `Campaign.objective = "sales"` (must match the Brief) |
+| `budget: $15,000 USD` | Distributed across `LineItem.budget` entries (single LineItem unless phased) |
+| `flight: 2026-06-01 → 2026-06-30` | `LineItem.flight` (single LineItem unless phased) |
+| `audience: US, 25–44, specialty coffee drinkers` | `LineItem.targeting.audience` — carried through unchanged |
+| 3 creatives (Hero video, Lifestyle still, Promo still) | 3 `Ad` entries, each `line_item_name` pointing at a `LineItem` |
+| `notes: "Hold the promo creative until week 2."` | Triggers the phasing rule — planner splits into 2 `LineItem`s and attaches the promo `Ad` to the later one |
+| `notes: "Keep all initial drafts paused..."` | Always true regardless; `Campaign.status = "draft"` is forced |
+
+A plausible plan from the reference brief — the structure is deterministic, the exact names and budget split vary per run:
+
+```jsonc
+{
+  "name": "Glow Roast — Midnight Brew Launch (Jun 2026)",
+  "objective": "sales",
+  "status": "draft",                        // forced — never "active" out of plan_campaign
+  "line_items": [
+    {
+      "name": "Midnight Brew — always-on",
+      "budget":  {"amount": "11000.00", "currency": "USD"},
+      "flight":  {"start_date": "2026-06-01", "end_date": "2026-06-30"},
+      "targeting": {"audience": { /* carried from Brief.audience */ }}
+    },
+    {
+      "name": "Midnight Brew — promo (week 2+)",
+      "budget":  {"amount": "4000.00",  "currency": "USD"},
+      "flight":  {"start_date": "2026-06-08", "end_date": "2026-06-30"},
+      "targeting": {"audience": { /* carried from Brief.audience */ }}
+    }
+  ],
+  "ads": [
+    {"name": "Hero video",      "line_item_name": "Midnight Brew — always-on",     "creative": { /* from creatives[0] */ }},
+    {"name": "Lifestyle still", "line_item_name": "Midnight Brew — always-on",     "creative": { /* from creatives[1] */ }},
+    {"name": "Promo still",     "line_item_name": "Midnight Brew — promo (week 2+)", "creative": { /* from creatives[2] */ }}
+  ]
+}
+```
+
+To see the actual output for your own brief, run `python -m yieldagent.agents.campaign_setup <your-brief>.md --dry-run` — the planned `Campaign` JSON is printed before the human gate, no Meta credentials required.
+
 ## Writing your own brief
 
-Copy `briefs/example_brief.md` and edit. Anything goes as long as the planner can extract the fields above. If you want to be sure the brief parses cleanly, run it through the agent with `--auto-approve` against a fake MCP tool (see [campaign-setup-agent.md](campaign-setup-agent.md#embedding-programmatically)) and inspect the `Brief` in the printed audit detail.
+Copy `briefs/example_brief.md` and edit. Anything goes as long as the planner can extract the fields above. The fastest way to be sure a brief parses cleanly is to run it through the agent with `--dry-run` (no Meta credentials needed; see [campaign-setup-agent.md](campaign-setup-agent.md#dry-run-no-meta-credentials-needed)) and inspect the planned `Campaign` in the printed JSON and audit detail.

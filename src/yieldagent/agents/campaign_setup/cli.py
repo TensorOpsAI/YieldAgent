@@ -2,9 +2,11 @@
 
     python -m yieldagent.agents.campaign_setup briefs/example_brief.md
     python -m yieldagent.agents.campaign_setup briefs/example_brief.md --auto-approve
+    python -m yieldagent.agents.campaign_setup briefs/example_brief.md --dry-run
 
 The default mode is interactive: the agent plans the draft, prints it, and asks
-for approval on stdin before publishing.
+for approval on stdin before publishing. --dry-run swaps the Meta MCP server for
+a stub so you can see the agent run end-to-end without Meta credentials.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from langgraph.types import Command
@@ -27,10 +30,42 @@ def _print_audit(state: dict) -> None:
         print(f"  [{entry['node']}] {entry['summary']}", file=sys.stderr)
 
 
-async def _run(brief_path: Path, *, auto_approve: bool, model_name: str) -> int:
-    graph = build_graph(model_name=model_name)
+def _make_dry_run_tool_loader():
+    """Stub MCP tool loader for --dry-run: synthesizes plausible IDs, no network calls."""
+
+    async def get_tool(name: str):
+        class StubTool:
+            async def ainvoke(self, payload: dict[str, Any]) -> dict[str, Any]:
+                if name != "publish_draft_campaign":
+                    return {}
+                campaign = payload.get("campaign", {})
+                return {
+                    "campaign_id": "dryrun_campaign_000",
+                    "line_items": [
+                        {"name": li["name"], "id": f"dryrun_adset_{i:03d}"}
+                        for i, li in enumerate(campaign.get("line_items", []))
+                    ],
+                    "ads": [
+                        {"name": ad["name"], "id": f"dryrun_ad_{i:03d}"}
+                        for i, ad in enumerate(campaign.get("ads", []))
+                    ],
+                }
+
+        return StubTool()
+
+    return get_tool
+
+
+async def _run(brief_path: Path, *, auto_approve: bool, dry_run: bool, model_name: str) -> int:
+    graph = build_graph(
+        model_name=model_name,
+        get_mcp_tool=_make_dry_run_tool_loader() if dry_run else None,
+    )
     config = {"configurable": {"thread_id": str(uuid4())}}
     brief_text = brief_path.read_text()
+
+    if dry_run:
+        print("=== DRY RUN — Meta MCP server replaced with stub; no API calls ===", file=sys.stderr)
 
     state = await graph.ainvoke({"brief_text": brief_text}, config=config)
 
@@ -72,9 +107,22 @@ def main() -> int:
         action="store_true",
         help="Skip the human gate (CI / smoke tests only — never use against live accounts)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Replace the Meta MCP server with a stub. No Meta credentials needed; "
+        "nothing is sent to Meta. Use this to try the agent end-to-end before wiring up real ad accounts.",
+    )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Claude model name")
     args = parser.parse_args()
-    return asyncio.run(_run(args.brief, auto_approve=args.auto_approve, model_name=args.model))
+    return asyncio.run(
+        _run(
+            args.brief,
+            auto_approve=args.auto_approve,
+            dry_run=args.dry_run,
+            model_name=args.model,
+        )
+    )
 
 
 if __name__ == "__main__":
