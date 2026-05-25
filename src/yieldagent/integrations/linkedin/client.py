@@ -404,6 +404,100 @@ class LinkedInClient:
             confirm=confirm,
         )
 
+    # -- Lead Sync (read + webhook subscribe) ---------------------------
+    #
+    # Requires the `r_marketing_leadgen_automation` OAuth scope, which lives
+    # in a separate program approval. Webhook validation against the app
+    # client secret is performed by the web receiver, not this client.
+
+    async def list_lead_forms(
+        self,
+        *,
+        owner_organization_urn: str | None = None,
+        owner_sponsored_account_urn: str | None = None,
+        count: int = 10,
+        start: int = 0,
+    ) -> dict[str, Any]:
+        """List Lead Gen Forms owned by an organization or sponsored account."""
+        if not (owner_organization_urn or owner_sponsored_account_urn):
+            raise ValueError(
+                "list_lead_forms needs owner_organization_urn or owner_sponsored_account_urn"
+            )
+        if owner_organization_urn:
+            owner = f"(organization:{owner_organization_urn})"
+        else:
+            owner = f"(sponsoredAccount:{owner_sponsored_account_urn})"
+        params: list[tuple[str, str]] = [
+            ("owner", owner),
+            ("q", "owner"),
+            ("count", str(count)),
+            ("start", str(start)),
+        ]
+        return await self._request("GET", "/leadForms", params=params)
+
+    async def get_lead_form(self, form_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/leadForms/{form_id}")
+
+    async def list_lead_responses(
+        self,
+        *,
+        sponsored_account_urn: str | None = None,
+        versioned_form_urn: str | None = None,
+        lead_type: Literal["SPONSORED", "ORGANIC"] = "SPONSORED",
+        limited_to_test_leads: bool = False,
+    ) -> dict[str, Any]:
+        """Pull leads from Lead Gen Forms (pull model).
+
+        Either `sponsored_account_urn` (account-owner scope) or
+        `versioned_form_urn` (single-form scope) must be supplied — usually
+        you pass both for narrowest matching. `versioned_form_urn` looks
+        like `urn:li:versionedLeadGenForm:(urn:li:leadGenForm:3162,1)`.
+        """
+        if not (sponsored_account_urn or versioned_form_urn):
+            raise ValueError(
+                "list_lead_responses needs sponsored_account_urn or versioned_form_urn"
+            )
+        params: list[tuple[str, str]] = [("q", "owner")]
+        if sponsored_account_urn:
+            params.append(("owner", f"(sponsoredAccount:{sponsored_account_urn})"))
+        params.append(("leadType", f"(leadType:{lead_type})"))
+        params.append(("limitedToTestLeads", str(limited_to_test_leads).lower()))
+        if versioned_form_urn:
+            params.append(("versionedLeadGenFormUrn", versioned_form_urn))
+        return await self._request("GET", "/leadFormResponses", params=params)
+
+    async def get_lead_response(self, response_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/leadFormResponses/{response_id}")
+
+    async def subscribe_lead_notifications(
+        self,
+        *,
+        webhook_url: str,
+        owner_sponsored_account_urn: str | None = None,
+        owner_organization_urn: str | None = None,
+        versioned_form_urn: str | None = None,
+        lead_type: Literal["SPONSORED", "ORGANIC"] = "SPONSORED",
+    ) -> dict[str, Any]:
+        """Register a webhook for lead-notification push events."""
+        if not (owner_sponsored_account_urn or owner_organization_urn):
+            raise ValueError(
+                "subscribe_lead_notifications needs an owner_sponsored_account_urn "
+                "or owner_organization_urn"
+            )
+        owner: dict[str, str] = {}
+        if owner_sponsored_account_urn:
+            owner["sponsoredAccount"] = owner_sponsored_account_urn
+        if owner_organization_urn:
+            owner["organization"] = owner_organization_urn
+        payload: dict[str, Any] = {
+            "webhook": webhook_url,
+            "owner": owner,
+            "leadType": lead_type,
+        }
+        if versioned_form_urn:
+            payload["versionedForm"] = versioned_form_urn
+        return await self._request("POST", "/leadNotifications", json=payload)
+
     # -- Matched Audiences (DMP segments) -------------------------------
     #
     # Requires the `rw_dmp_segments` OAuth scope, which is a separate program

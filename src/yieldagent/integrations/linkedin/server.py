@@ -464,6 +464,100 @@ async def compare_campaign_periods(
     return {"current": current, "baseline": baseline}
 
 
+# -- Lead Sync (read + subscribe) ------------------------------------------
+
+
+@mcp.tool()
+async def list_lead_forms(
+    owner_organization_urn: str | None = None,
+    owner_sponsored_account_urn: str | None = None,
+    count: int = 10,
+    start: int = 0,
+) -> dict[str, Any]:
+    """Read-only: list Lead Gen Forms owned by an organization or ad account."""
+    async with _client() as client:
+        return await client.list_lead_forms(
+            owner_organization_urn=owner_organization_urn,
+            owner_sponsored_account_urn=owner_sponsored_account_urn,
+            count=count,
+            start=start,
+        )
+
+
+@mcp.tool()
+async def get_lead_form(form_id: str) -> dict[str, Any]:
+    """Read-only: fetch one Lead Gen Form by id."""
+    async with _client() as client:
+        return await client.get_lead_form(form_id)
+
+
+@mcp.tool()
+async def pull_lead_responses(
+    versioned_form_urn: str | None = None,
+    lead_type: str = "SPONSORED",
+    limited_to_test_leads: bool = False,
+) -> dict[str, Any]:
+    """Read-only: pull lead-form submissions for the configured ad account.
+
+    `versioned_form_urn` looks like
+    `urn:li:versionedLeadGenForm:(urn:li:leadGenForm:3162,1)`. If omitted,
+    responses across all forms owned by the account are returned. Requires
+    the `r_marketing_leadgen_automation` scope.
+    """
+    if lead_type.upper() not in {"SPONSORED", "ORGANIC"}:
+        raise ValueError("lead_type must be SPONSORED or ORGANIC")
+    async with _client() as client:
+        return await client.list_lead_responses(
+            sponsored_account_urn=client.config.account_urn,
+            versioned_form_urn=versioned_form_urn,
+            lead_type=lead_type.upper(),  # type: ignore[arg-type]
+            limited_to_test_leads=limited_to_test_leads,
+        )
+
+
+@mcp.tool()
+async def subscribe_lead_webhook(
+    webhook_url: str,
+    versioned_form_urn: str | None = None,
+    lead_type: str = "SPONSORED",
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Credential-sensitive: register a webhook to receive lead notifications.
+
+    LinkedIn validates the webhook before accepting it: it issues a GET to
+    `webhook_url` with a `challengeCode` query parameter, expecting
+    `{challengeCode, challengeResponse}` where `challengeResponse` is the
+    hex HMAC-SHA256 of the code keyed by the LinkedIn app's client secret.
+    YieldAgent's web app ships a receiver at
+    `/api/webhooks/linkedin/leadsync` that performs this handshake using
+    the stored provider config. Confirm=False returns the payload preview.
+    """
+    if not webhook_url.startswith("https://"):
+        raise ValueError("LinkedIn only accepts HTTPS webhook URLs.")
+    if lead_type.upper() not in {"SPONSORED", "ORGANIC"}:
+        raise ValueError("lead_type must be SPONSORED or ORGANIC")
+    async with _client() as client:
+        if not confirm:
+            return {
+                "dry_run": True,
+                "endpoint": "/leadNotifications",
+                "body": {
+                    "webhook": webhook_url,
+                    "owner": {"sponsoredAccount": client.config.account_urn},
+                    "leadType": lead_type.upper(),
+                    **({"versionedForm": versioned_form_urn} if versioned_form_urn else {}),
+                },
+                "hint": "Re-call with confirm=True to register.",
+            }
+        client.assert_account_allowed()
+        return await client.subscribe_lead_notifications(
+            webhook_url=webhook_url,
+            owner_sponsored_account_urn=client.config.account_urn,
+            versioned_form_urn=versioned_form_urn,
+            lead_type=lead_type.upper(),  # type: ignore[arg-type]
+        )
+
+
 # -- Matched Audiences (credential_sensitive, gated by confirm for upload) --
 
 
