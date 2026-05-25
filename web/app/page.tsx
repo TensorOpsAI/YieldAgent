@@ -127,6 +127,26 @@ type ChatMessage = {
   time: string;
 };
 
+type BrowserSessionView = {
+  id: string;
+  provider: "playwright";
+  status: "starting" | "active" | "failed" | "completed";
+  reasonBrowserNeeded: string;
+  targetSite: string;
+  allowedDomains: string[];
+  intendedActions: string[];
+  forbiddenActions: string[];
+  approvalRequiredBeforeSubmit: boolean;
+  currentUrl: string;
+  title: string;
+  lastScreenshotDataUrl?: string;
+  lastScreenshotRef?: string;
+  lastScreenshotAt?: string;
+  lastPageText?: string;
+  errorMessage?: string;
+  startedAt: string;
+};
+
 type AuditEvent = {
   id: number;
   actor: string;
@@ -270,6 +290,9 @@ export default function WorkspaceInterface() {
   const [latestPlan, setLatestPlan] = useState<PlanSummary>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [messageDraft, setMessageDraft] = useState("");
+  const [browserSession, setBrowserSession] = useState<BrowserSessionView | null>(null);
+  const [browserTargetUrl, setBrowserTargetUrl] = useState("https://www.linkedin.com/campaignmanager");
+  const [browserLoading, setBrowserLoading] = useState(false);
   const [profileDraft, setProfileDraft] = useState({
     name: "",
     geography: "",
@@ -299,8 +322,27 @@ export default function WorkspaceInterface() {
     }
   }, []);
 
+  const refreshBrowserStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/browser/session", { cache: "no-store" });
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as { session: BrowserSessionView | null };
+      setBrowserSession(payload.session);
+      if (payload.session?.currentUrl) {
+        setBrowserTargetUrl(payload.session.currentUrl);
+      }
+    } catch {
+      // Browser status is optional; the panel can start a new session.
+    }
+  }, []);
+
   useEffect(() => {
-    void refreshConnections();
+    window.setTimeout(() => {
+      void refreshConnections();
+      void refreshBrowserStatus();
+    }, 0);
 
     const params = new URLSearchParams(window.location.search);
     if (params.get("connected") === "linkedin") {
@@ -317,7 +359,7 @@ export default function WorkspaceInterface() {
         window.history.replaceState({}, "", window.location.pathname);
       }, 0);
     }
-  }, [refreshConnections]);
+  }, [refreshBrowserStatus, refreshConnections]);
 
   const approvalCopy = useMemo(() => {
     if (approvalStatus === "approved") {
@@ -413,6 +455,140 @@ export default function WorkspaceInterface() {
     ]);
   };
 
+  const handleStartBrowser = (reasonBrowserNeeded?: string, url = browserTargetUrl) => {
+    void (async () => {
+      setBrowserLoading(true);
+      try {
+        const response = await fetch("/api/browser/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url,
+            reasonBrowserNeeded:
+              reasonBrowserNeeded ??
+              "The user asked for browser fallback because the requested workflow may not be available through an official API."
+          })
+        });
+        const payload = (await response.json()) as {
+          ok?: boolean;
+          session?: BrowserSessionView;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.ok || !payload.session) {
+          throw new Error(payload.error ?? "Browser session failed");
+        }
+
+        setBrowserSession(payload.session);
+        setBrowserTargetUrl(payload.session.currentUrl);
+        setActiveScreen("agent");
+        setChatMessages((current) => [
+          ...current,
+          {
+            id: current.length + 1,
+            actor: "agent",
+            text: "I opened a governed browser session in read-only mode. I can inspect visible UI state and screenshots, but form submissions, publishing, spend, billing, and targeting expansion still require approval.",
+            time: nowTime()
+          }
+        ]);
+        addAudit("Opened governed browser fallback session", "credential_sensitive", "browser.open_session", "agent");
+        showNotice("Browser fallback opened inside the agent console.", "success");
+      } catch (error) {
+        showNotice(error instanceof Error ? error.message : "Could not open browser fallback.", "warning");
+      } finally {
+        setBrowserLoading(false);
+      }
+    })();
+  };
+
+  const handleNavigateBrowser = () => {
+    if (!browserSession) {
+      handleStartBrowser("The user requested a browser fallback session.", browserTargetUrl);
+      return;
+    }
+
+    void (async () => {
+      setBrowserLoading(true);
+      try {
+        const response = await fetch("/api/browser/session/navigate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: browserSession.id, url: browserTargetUrl })
+        });
+        const payload = (await response.json()) as {
+          ok?: boolean;
+          session?: BrowserSessionView;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.ok || !payload.session) {
+          throw new Error(payload.error ?? "Browser navigation failed");
+        }
+
+        setBrowserSession(payload.session);
+        setBrowserTargetUrl(payload.session.currentUrl);
+        addAudit("Navigated governed browser fallback session", "credential_sensitive", "browser.navigate", "agent");
+      } catch (error) {
+        showNotice(error instanceof Error ? error.message : "Could not navigate browser.", "warning");
+      } finally {
+        setBrowserLoading(false);
+      }
+    })();
+  };
+
+  const handleRefreshBrowser = () => {
+    if (!browserSession) {
+      return;
+    }
+
+    void (async () => {
+      setBrowserLoading(true);
+      try {
+        const response = await fetch("/api/browser/session", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: browserSession.id })
+        });
+        const payload = (await response.json()) as {
+          ok?: boolean;
+          session?: BrowserSessionView;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.ok || !payload.session) {
+          throw new Error(payload.error ?? "Browser refresh failed");
+        }
+
+        setBrowserSession(payload.session);
+        addAudit("Captured browser screenshot and visible page text", "read_only", "browser.take_screenshot", "agent");
+      } catch (error) {
+        showNotice(error instanceof Error ? error.message : "Could not refresh browser screenshot.", "warning");
+      } finally {
+        setBrowserLoading(false);
+      }
+    })();
+  };
+
+  const handleCloseBrowser = () => {
+    if (!browserSession) {
+      return;
+    }
+
+    void (async () => {
+      const closingId = browserSession.id;
+      setBrowserSession(null);
+      try {
+        await fetch(`/api/browser/session?sessionId=${encodeURIComponent(closingId)}`, {
+          method: "DELETE"
+        });
+        addAudit("Closed governed browser fallback session", "read_only", "browser.close_session", "agent");
+        showNotice("Browser fallback closed.", "info");
+      } catch {
+        showNotice("Browser session was removed from the UI, but the server close call failed.", "warning");
+      }
+    })();
+  };
+
   const handleSendMessage = (event: FormEvent) => {
     event.preventDefault();
     const trimmed = messageDraft.trim();
@@ -435,6 +611,12 @@ export default function WorkspaceInterface() {
     setMessageDraft("");
     addAudit("Captured agent-console message and generated governed response", "draft_only", "agent_runs.messages");
     showNotice("Agent response added to the console.", "success");
+    if (/(browser|campaign manager|ui-only|rejection|not available via api|doesn't expose|does not expose|inspect.*ui)/i.test(trimmed)) {
+      handleStartBrowser(
+        "The user asked for browser/UI inspection because the requested information may not be exposed by an official API.",
+        browserTargetUrl
+      );
+    }
   };
 
   const handleCreateProfile = (event: FormEvent) => {
@@ -718,11 +900,19 @@ export default function WorkspaceInterface() {
           <AgentScreen
             approvalCopy={approvalCopy}
             approvalStatus={approvalStatus}
+            browserLoading={browserLoading}
+            browserSession={browserSession}
+            browserTargetUrl={browserTargetUrl}
             chatMessages={chatMessages}
             latestPlan={latestPlan}
             messageDraft={messageDraft}
+            setBrowserTargetUrl={setBrowserTargetUrl}
             setMessageDraft={setMessageDraft}
             handleSendMessage={handleSendMessage}
+            onCloseBrowser={handleCloseBrowser}
+            onNavigateBrowser={handleNavigateBrowser}
+            onRefreshBrowser={handleRefreshBrowser}
+            onStartBrowser={() => handleStartBrowser()}
             setApproval={setApproval}
           />
         )}
@@ -921,20 +1111,36 @@ function DashboardScreen({
 function AgentScreen({
   approvalCopy,
   approvalStatus,
+  browserLoading,
+  browserSession,
+  browserTargetUrl,
   chatMessages,
   latestPlan,
   messageDraft,
+  setBrowserTargetUrl,
   setMessageDraft,
   handleSendMessage,
+  onCloseBrowser,
+  onNavigateBrowser,
+  onRefreshBrowser,
+  onStartBrowser,
   setApproval
 }: {
   approvalCopy: { title: string; note: string; icon: LucideIcon };
   approvalStatus: ApprovalStatus;
+  browserLoading: boolean;
+  browserSession: BrowserSessionView | null;
+  browserTargetUrl: string;
   chatMessages: ChatMessage[];
   latestPlan: PlanSummary;
   messageDraft: string;
+  setBrowserTargetUrl: (value: string) => void;
   setMessageDraft: (value: string) => void;
   handleSendMessage: (event: FormEvent) => void;
+  onCloseBrowser: () => void;
+  onNavigateBrowser: () => void;
+  onRefreshBrowser: () => void;
+  onStartBrowser: () => void;
   setApproval: (status: ApprovalStatus) => void;
 }) {
   const ApprovalIcon = approvalCopy.icon;
@@ -979,6 +1185,17 @@ function AgentScreen({
       </section>
 
       <aside className="agent-side">
+        <BrowserFallbackPanel
+          browserLoading={browserLoading}
+          browserSession={browserSession}
+          browserTargetUrl={browserTargetUrl}
+          setBrowserTargetUrl={setBrowserTargetUrl}
+          onCloseBrowser={onCloseBrowser}
+          onNavigateBrowser={onNavigateBrowser}
+          onRefreshBrowser={onRefreshBrowser}
+          onStartBrowser={onStartBrowser}
+        />
+
         <div className="panel">
           <PanelHeader eyebrow="Execution Trace" title="Tool-call timeline" />
           {chatMessages.length > 0 || latestPlan ? (
@@ -1047,6 +1264,105 @@ function AgentScreen({
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function BrowserFallbackPanel({
+  browserLoading,
+  browserSession,
+  browserTargetUrl,
+  setBrowserTargetUrl,
+  onCloseBrowser,
+  onNavigateBrowser,
+  onRefreshBrowser,
+  onStartBrowser
+}: {
+  browserLoading: boolean;
+  browserSession: BrowserSessionView | null;
+  browserTargetUrl: string;
+  setBrowserTargetUrl: (value: string) => void;
+  onCloseBrowser: () => void;
+  onNavigateBrowser: () => void;
+  onRefreshBrowser: () => void;
+  onStartBrowser: () => void;
+}) {
+  return (
+    <div className="panel browser-panel">
+      <PanelHeader eyebrow="Browser Fallback" title={browserSession ? "Live governed session" : "Ready when APIs stop short"} />
+
+      <div className="browser-policy">
+        <ShieldCheck aria-hidden="true" size={18} />
+        <div>
+          <strong>Read-only until approval</strong>
+          <span>Navigation, screenshots, and page-state extraction are allowed. Submit, publish, spend, billing, and broad targeting are forbidden.</span>
+        </div>
+      </div>
+
+      <div className="browser-url-row">
+        <input
+          aria-label="Browser fallback URL"
+          value={browserTargetUrl}
+          onChange={(event) => setBrowserTargetUrl(event.target.value)}
+          placeholder="https://www.linkedin.com/campaignmanager"
+        />
+        <button
+          className="primary-icon-button"
+          type="button"
+          title={browserSession ? "Navigate browser" : "Start browser"}
+          aria-label={browserSession ? "Navigate browser" : "Start browser"}
+          onClick={browserSession ? onNavigateBrowser : onStartBrowser}
+          disabled={browserLoading}
+        >
+          <ExternalLink aria-hidden="true" size={18} />
+        </button>
+      </div>
+
+      {browserSession ? (
+        <>
+          <div className={`browser-status ${browserSession.status}`}>
+            <div>
+              <strong>{browserSession.title}</strong>
+              <span>{browserSession.currentUrl}</span>
+            </div>
+            <StatusPill status={browserSession.status === "failed" ? "error" : "connected"} />
+          </div>
+
+          <div className="browser-frame" aria-live="polite">
+            {browserSession.lastScreenshotDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={browserSession.lastScreenshotDataUrl} alt="Current browser session screenshot" />
+            ) : (
+              <EmptyState icon={RefreshCw} title={browserLoading ? "Opening browser..." : "No screenshot captured yet."} />
+            )}
+          </div>
+
+          <div className="browser-actions">
+            <button className="secondary-button" type="button" onClick={onRefreshBrowser} disabled={browserLoading}>
+              <RefreshCw aria-hidden="true" size={16} />
+              Refresh
+            </button>
+            <button className="secondary-button" type="button" onClick={onCloseBrowser}>
+              <X aria-hidden="true" size={16} />
+              Close
+            </button>
+          </div>
+
+          <div className="browser-policy-details">
+            <InfoBlock title="Reason browser is needed" value={browserSession.reasonBrowserNeeded} />
+            <InfoBlock title="Allowed domains" value={browserSession.allowedDomains.slice(0, 8).join(", ")} />
+            <InfoBlock title="Last capture" value={browserSession.lastScreenshotAt ?? "Pending"} />
+          </div>
+        </>
+      ) : (
+        <EmptyState
+          icon={ExternalLink}
+          title="No browser session is active."
+          description="Start one when an ad-platform feature is unavailable via API. The session appears here as audited screenshots."
+          actionLabel={browserLoading ? "Opening..." : "Start browser"}
+          onAction={onStartBrowser}
+        />
+      )}
     </div>
   );
 }

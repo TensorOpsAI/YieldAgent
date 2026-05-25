@@ -84,6 +84,17 @@ Env vars (`LINKEDIN_CLIENT_ID`, `META_APP_ID`, `GOOGLE_ADS_CLIENT_ID`, etc.) are
 
 > Status: LinkedIn OAuth start + callback routes are wired. Meta and Google Ads can save credentials through the UI, but their OAuth routes are not yet implemented.
 
+### Browser fallback in the agent console
+
+Some ad-platform workflows are not available through official APIs. The Agent Console includes a governed Playwright browser fallback for those gaps. It appears inside the agent screen as an audited screenshot stream, constrained to ad-platform allowlisted domains. Navigation, screenshots, and visible page extraction are allowed; submit, publish, spend, billing, and broad targeting actions remain forbidden until an approval flow exists for the exact action.
+
+Install the local browser runtime once:
+
+```bash
+cd web
+npx playwright install chromium
+```
+
 ## Use cases
 
 ### Working today

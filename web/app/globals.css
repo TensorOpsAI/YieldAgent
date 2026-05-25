@@ -99,7 +99,8 @@ button:disabled {
 .secondary-button,
 .approval-actions,
 .audit-row,
-.control-pill-row {
+.control-pill-row,
+.browser-actions {
   display: flex;
   align-items: center;
 }
@@ -593,6 +594,98 @@ textarea:focus {
   display: grid;
   align-content: start;
   gap: 16px;
+}
+
+.browser-panel {
+  display: grid;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.browser-policy {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  color: #164a38;
+  border: 1px solid #bfe6d3;
+  border-radius: 8px;
+  background: var(--green-soft);
+}
+
+.browser-policy strong,
+.browser-policy span {
+  display: block;
+}
+
+.browser-policy span {
+  margin-top: 3px;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.browser-url-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 9px;
+  min-width: 0;
+}
+
+.browser-url-row input {
+  min-width: 0;
+}
+
+.browser-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.browser-status strong,
+.browser-status span {
+  display: block;
+}
+
+.browser-status span {
+  max-width: 330px;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browser-frame {
+  display: grid;
+  min-height: 230px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101817;
+}
+
+.browser-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.browser-actions {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.browser-policy-details {
+  display: grid;
+  gap: 8px;
 }
 
 .timeline {
@@ -1168,6 +1261,7 @@ textarea:focus {
 
 .info-block strong {
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .audit-row {
