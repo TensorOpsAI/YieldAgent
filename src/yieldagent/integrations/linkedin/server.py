@@ -192,6 +192,136 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+# -- Campaign reads (read-only) ---------------------------------------------
+
+
+@mcp.tool()
+async def list_campaigns(
+    status_values: list[str] | None = None,
+    type_values: list[str] | None = None,
+    campaign_group_urns: list[str] | None = None,
+    page_size: int = 100,
+    page_token: str | None = None,
+) -> dict[str, Any]:
+    """Read-only: list campaigns under the configured ad account.
+
+    Filters are optional. `status_values` accepts LinkedIn statuses
+    (ACTIVE, PAUSED, ARCHIVED, COMPLETED, CANCELED, DRAFT, REMOVED).
+    Returns the raw search payload, including `metadata.nextPageToken` if
+    paginated.
+    """
+    async with _client() as client:
+        return await client.list_campaigns(
+            status_values=status_values,
+            type_values=type_values,
+            campaign_group_urns=campaign_group_urns,
+            page_size=page_size,
+            page_token=page_token,
+        )
+
+
+@mcp.tool()
+async def get_campaign(campaign_id: str) -> dict[str, Any]:
+    """Read-only: fetch a single campaign by numeric id."""
+    async with _client() as client:
+        return await client.get_campaign(campaign_id)
+
+
+# -- Campaign edits (spend_or_publish, gated by confirm) -------------------
+
+
+@mcp.tool()
+async def pause_campaign(campaign_id: str, confirm: bool = False) -> dict[str, Any]:
+    """Spend gate: pause an existing campaign.
+
+    Returns a dry-run preview when `confirm` is False. Re-call with
+    `confirm=True` to apply.
+    """
+    async with _client() as client:
+        return await client.set_campaign_status(campaign_id, "PAUSED", confirm=confirm)
+
+
+@mcp.tool()
+async def resume_campaign(campaign_id: str, confirm: bool = False) -> dict[str, Any]:
+    """Spend gate: resume a paused campaign back to ACTIVE.
+
+    Returns a dry-run preview when `confirm` is False.
+    """
+    async with _client() as client:
+        return await client.set_campaign_status(campaign_id, "ACTIVE", confirm=confirm)
+
+
+@mcp.tool()
+async def archive_campaign(campaign_id: str, confirm: bool = False) -> dict[str, Any]:
+    """Spend gate: archive a campaign (hidden but not deleted)."""
+    async with _client() as client:
+        return await client.set_campaign_status(campaign_id, "ARCHIVED", confirm=confirm)
+
+
+@mcp.tool()
+async def activate_draft_campaign(campaign_id: str, confirm: bool = False) -> dict[str, Any]:
+    """Spend gate: flip a DRAFT campaign to ACTIVE.
+
+    This is the gated path around the create-campaign refusal to set ACTIVE
+    directly. The agent must explicitly ask the operator before delivering
+    impressions / spending budget.
+    """
+    async with _client() as client:
+        return await client.set_campaign_status(campaign_id, "ACTIVE", confirm=confirm)
+
+
+@mcp.tool()
+async def update_campaign_budget(
+    campaign_id: str,
+    daily_budget_amount: str | None = None,
+    total_budget_amount: str | None = None,
+    currency: str = "USD",
+    clear_total_budget: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Spend gate: change a campaign's daily and/or total budget.
+
+    Pass either or both of `daily_budget_amount` / `total_budget_amount`.
+    Set `clear_total_budget=True` to remove the lifetime cap (rare; only
+    valid when a daily cap exists). Returns a dry-run preview by default.
+    """
+    daily = (
+        {"amount": daily_budget_amount, "currencyCode": currency.upper()}
+        if daily_budget_amount is not None
+        else None
+    )
+    total = (
+        {"amount": total_budget_amount, "currencyCode": currency.upper()}
+        if total_budget_amount is not None
+        else None
+    )
+    async with _client() as client:
+        return await client.update_campaign_budget(
+            campaign_id,
+            daily_budget=daily,
+            total_budget=total,
+            clear_total_budget=clear_total_budget,
+            confirm=confirm,
+        )
+
+
+@mcp.tool()
+async def update_campaign_schedule(
+    campaign_id: str,
+    start_epoch_ms: int | None = None,
+    end_epoch_ms: int | None = None,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Spend gate: change a campaign's start and/or end time (epoch ms)."""
+    async with _client() as client:
+        return await client.update_campaign_schedule(
+            campaign_id,
+            start_epoch_ms=start_epoch_ms,
+            end_epoch_ms=end_epoch_ms,
+            confirm=confirm,
+        )
+
+
 # -- Ad Analytics (read-only) ----------------------------------------------
 
 _DEFAULT_ANALYTICS_FIELDS = [

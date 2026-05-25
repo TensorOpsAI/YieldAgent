@@ -234,6 +234,176 @@ class LinkedInClient:
         }
         return await self._request("POST", "/creatives", json=payload)
 
+    # -- Campaign reads --------------------------------------------------
+
+    async def list_campaigns(
+        self,
+        *,
+        status_values: list[str] | None = None,
+        type_values: list[str] | None = None,
+        campaign_group_urns: list[str] | None = None,
+        page_size: int = 100,
+        page_token: str | None = None,
+        sort_order: Literal["ASCENDING", "DESCENDING"] = "DESCENDING",
+    ) -> dict[str, Any]:
+        """List campaigns under the configured ad account with optional filters."""
+        search_parts: list[str] = []
+        if status_values:
+            search_parts.append(
+                f"status:(values:List({','.join(status_values)}))"
+            )
+        if type_values:
+            search_parts.append(
+                f"type:(values:List({','.join(type_values)}))"
+            )
+        if campaign_group_urns:
+            search_parts.append(
+                f"campaignGroup:(values:{_format_urn_list(campaign_group_urns)})"
+            )
+
+        params: list[tuple[str, str]] = [
+            ("q", "search"),
+            ("sortOrder", sort_order),
+            ("pageSize", str(page_size)),
+        ]
+        if search_parts:
+            params.append(("search", f"({','.join(search_parts)})"))
+        if page_token:
+            params.append(("pageToken", page_token))
+
+        return await self._request(
+            "GET",
+            f"/adAccounts/{self.config.ad_account_id}/adCampaigns",
+            params=params,
+        )
+
+    async def get_campaign(self, campaign_id: str) -> dict[str, Any]:
+        """Fetch a single campaign by id (digits, not URN)."""
+        return await self._request(
+            "GET",
+            f"/adAccounts/{self.config.ad_account_id}/adCampaigns/{campaign_id}",
+        )
+
+    # -- Campaign partial updates ---------------------------------------
+
+    async def patch_campaign(
+        self,
+        campaign_id: str,
+        *,
+        set_fields: dict[str, Any] | None = None,
+        delete_fields: list[str] | None = None,
+        confirm: bool = False,
+    ) -> dict[str, Any]:
+        """Submit a Rest.li PARTIAL_UPDATE against an existing campaign.
+
+        Setting `confirm=False` returns a dry-run preview of the patch body
+        instead of issuing the POST. Callers expose this as a built-in
+        approval gate: the agent stages an edit, the operator inspects the
+        patch, and only an explicit re-call with `confirm=True` mutates
+        spend. Status changes are restricted to PAUSED / ACTIVE / ARCHIVED /
+        DRAFT — COMPLETED is refused.
+        """
+        if not set_fields and not delete_fields:
+            raise ValueError("patch_campaign needs at least one of set_fields / delete_fields")
+        if set_fields and "status" in set_fields:
+            status = str(set_fields["status"]).upper()
+            if status not in _CONFIRMABLE_STATUSES:
+                raise LinkedInError(
+                    400,
+                    {
+                        "error": f"status={status!r} is not allowed via patch_campaign",
+                        "allowed": sorted(_CONFIRMABLE_STATUSES),
+                    },
+                )
+            set_fields = {**set_fields, "status": status}
+
+        patch_body: dict[str, Any] = {"patch": {}}
+        if set_fields:
+            patch_body["patch"]["$set"] = set_fields
+        if delete_fields:
+            patch_body["patch"]["$delete"] = delete_fields
+
+        endpoint = (
+            f"/adAccounts/{self.config.ad_account_id}/adCampaigns/{campaign_id}"
+        )
+        if not confirm:
+            return {
+                "dry_run": True,
+                "method": "POST",
+                "endpoint": endpoint,
+                "headers": {"X-RestLi-Method": "PARTIAL_UPDATE"},
+                "body": patch_body,
+                "hint": "Re-call with confirm=True to apply this change.",
+            }
+
+        self.assert_account_allowed()
+        result = await self._request(
+            "POST",
+            endpoint,
+            json=patch_body,
+            headers={"X-RestLi-Method": "PARTIAL_UPDATE"},
+        )
+        return {"applied": True, "patch": patch_body, "response": result}
+
+    async def set_campaign_status(
+        self, campaign_id: str, status: str, *, confirm: bool = False
+    ) -> dict[str, Any]:
+        return await self.patch_campaign(
+            campaign_id,
+            set_fields={"status": status.upper()},
+            confirm=confirm,
+        )
+
+    async def update_campaign_budget(
+        self,
+        campaign_id: str,
+        *,
+        daily_budget: dict[str, str] | None = None,
+        total_budget: dict[str, str] | None = None,
+        clear_total_budget: bool = False,
+        confirm: bool = False,
+    ) -> dict[str, Any]:
+        if daily_budget is None and total_budget is None and not clear_total_budget:
+            raise ValueError(
+                "update_campaign_budget needs daily_budget, total_budget, or "
+                "clear_total_budget=True"
+            )
+        set_fields: dict[str, Any] = {}
+        if daily_budget is not None:
+            set_fields["dailyBudget"] = daily_budget
+        if total_budget is not None:
+            set_fields["totalBudget"] = total_budget
+        delete_fields = ["totalBudget"] if clear_total_budget else None
+        return await self.patch_campaign(
+            campaign_id,
+            set_fields=set_fields or None,
+            delete_fields=delete_fields,
+            confirm=confirm,
+        )
+
+    async def update_campaign_schedule(
+        self,
+        campaign_id: str,
+        *,
+        start_epoch_ms: int | None = None,
+        end_epoch_ms: int | None = None,
+        confirm: bool = False,
+    ) -> dict[str, Any]:
+        if start_epoch_ms is None and end_epoch_ms is None:
+            raise ValueError(
+                "update_campaign_schedule needs start_epoch_ms or end_epoch_ms"
+            )
+        run_schedule: dict[str, int] = {}
+        if start_epoch_ms is not None:
+            run_schedule["start"] = start_epoch_ms
+        if end_epoch_ms is not None:
+            run_schedule["end"] = end_epoch_ms
+        return await self.patch_campaign(
+            campaign_id,
+            set_fields={"runSchedule": run_schedule},
+            confirm=confirm,
+        )
+
     # -- Ad Analytics ----------------------------------------------------
 
     async def get_ad_analytics(
