@@ -1,9 +1,10 @@
 """Thin async HTTP client for the LinkedIn Marketing API.
 
-Scoped to the surface the campaign-setup agent needs: account introspection plus
-create-campaign-group / create-campaign / create-creative. All writes are forced
-to `DRAFT` status — the client refuses to set `ACTIVE`. Activation is a manual
-step in LinkedIn Campaign Manager.
+Covers the surface YieldAgent's agents need: account introspection,
+campaign-group / campaign / creative creation (DRAFT only), ad analytics
+(read), partial campaign edits (status / budget / schedule) gated by an
+explicit confirm flag, lead-gen-forms read + webhook subscription, and DMP
+matched-audiences list uploads.
 
 LinkedIn has no test-account concept. The safety guard here is an explicit
 allowlist: `LINKEDIN_ALLOWED_AD_ACCOUNTS` must contain the configured account
@@ -12,7 +13,8 @@ id, or `YIELDAGENT_ALLOW_LIVE=1` must be set.
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import date
+from typing import Any, Literal
 
 import httpx
 
@@ -20,6 +22,25 @@ from .config import LinkedInConfig
 
 _BASE_URL = "https://api.linkedin.com/rest"
 _FORBIDDEN_STATUSES = {"ACTIVE", "COMPLETED"}
+
+# Statuses the partial-update path will allow with confirm=True.
+_CONFIRMABLE_STATUSES = {"ACTIVE", "PAUSED", "ARCHIVED", "DRAFT"}
+
+CampaignStatus = Literal["ACTIVE", "PAUSED", "ARCHIVED", "DRAFT"]
+AnalyticsPivot = Literal[
+    "CAMPAIGN",
+    "CREATIVE",
+    "ACCOUNT",
+    "CAMPAIGN_GROUP",
+    "COMPANY",
+    "MEMBER_COMPANY_SIZE",
+    "MEMBER_COUNTRY_V2",
+    "MEMBER_INDUSTRY",
+    "MEMBER_JOB_FUNCTION",
+    "MEMBER_JOB_TITLE",
+    "MEMBER_SENIORITY",
+]
+TimeGranularity = Literal["ALL", "DAILY", "MONTHLY", "YEARLY"]
 
 
 class LinkedInError(RuntimeError):
@@ -58,15 +79,24 @@ class LinkedInClient:
         method: str,
         path: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: list[tuple[str, str]] | dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        content: bytes | None = None,
     ) -> dict[str, Any]:
+        merged_headers = self._headers
+        if headers:
+            merged_headers = {**merged_headers, **headers}
+        if content is not None and json is not None:
+            raise ValueError("Pass either json or content, not both")
+
         response = await self._http.request(
             method,
             f"{_BASE_URL}{path}",
             params=params,
             json=json,
-            headers=self._headers,
+            content=content,
+            headers=merged_headers,
         )
         if response.status_code >= 400:
             try:
@@ -86,6 +116,8 @@ class LinkedInClient:
             if header in response.headers:
                 body.setdefault("id", response.headers[header])
                 break
+        if "location" in response.headers:
+            body.setdefault("_location", response.headers["location"])
         return body
 
     async def get_ad_account(self) -> dict[str, Any]:
@@ -201,3 +233,102 @@ class LinkedInClient:
             "status": self._check_status(status),
         }
         return await self._request("POST", "/creatives", json=payload)
+
+    # -- Ad Analytics ----------------------------------------------------
+
+    async def get_ad_analytics(
+        self,
+        *,
+        pivot: AnalyticsPivot,
+        date_start: date,
+        date_end: date | None = None,
+        time_granularity: TimeGranularity = "ALL",
+        campaign_urns: list[str] | None = None,
+        creative_urns: list[str] | None = None,
+        account_urns: list[str] | None = None,
+        fields: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Run the Analytics Finder (`q=analytics`) for one pivot.
+
+        Returns the raw `{elements: [...], paging: {...}}` payload. The caller
+        is responsible for any aggregation. Provide at least one of
+        campaign_urns / creative_urns / account_urns (LinkedIn requires a
+        scoping facet).
+        """
+        if not (campaign_urns or creative_urns or account_urns):
+            raise ValueError(
+                "get_ad_analytics requires at least one of campaign_urns, "
+                "creative_urns, or account_urns"
+            )
+
+        params: list[tuple[str, str]] = [
+            ("q", "analytics"),
+            ("pivot", pivot),
+            ("timeGranularity", time_granularity),
+            ("dateRange", _format_date_range(date_start, date_end)),
+        ]
+        if campaign_urns:
+            params.append(("campaigns", _format_urn_list(campaign_urns)))
+        if creative_urns:
+            params.append(("creatives", _format_urn_list(creative_urns)))
+        if account_urns:
+            params.append(("accounts", _format_urn_list(account_urns)))
+        if fields:
+            params.append(("fields", ",".join(fields)))
+
+        return await self._request("GET", "/adAnalytics", params=params)
+
+    async def get_ad_statistics(
+        self,
+        *,
+        pivots: list[AnalyticsPivot],
+        date_start: date,
+        date_end: date | None = None,
+        time_granularity: TimeGranularity = "ALL",
+        campaign_urns: list[str] | None = None,
+        creative_urns: list[str] | None = None,
+        account_urns: list[str] | None = None,
+        fields: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Run the Statistics Finder (`q=statistics`) for up to three pivots."""
+        if not pivots:
+            raise ValueError("pivots must be a non-empty list")
+        if len(pivots) > 3:
+            raise ValueError("LinkedIn supports at most 3 pivots in q=statistics")
+        if not (campaign_urns or creative_urns or account_urns):
+            raise ValueError(
+                "get_ad_statistics requires at least one of campaign_urns, "
+                "creative_urns, or account_urns"
+            )
+
+        params: list[tuple[str, str]] = [
+            ("q", "statistics"),
+            ("pivots", _format_urn_list(pivots)),
+            ("timeGranularity", time_granularity),
+            ("dateRange", _format_date_range(date_start, date_end)),
+        ]
+        if campaign_urns:
+            params.append(("campaigns", _format_urn_list(campaign_urns)))
+        if creative_urns:
+            params.append(("creatives", _format_urn_list(creative_urns)))
+        if account_urns:
+            params.append(("accounts", _format_urn_list(account_urns)))
+        if fields:
+            params.append(("fields", ",".join(fields)))
+
+        return await self._request("GET", "/adAnalytics", params=params)
+
+
+# -- Rest.li v2 query value helpers -------------------------------------
+
+def _format_date_range(start: date, end: date | None) -> str:
+    """Build the Rest.li `dateRange=(start:(year:Y,month:M,day:D),end:...)` value."""
+    parts = [f"start:(year:{start.year},month:{start.month},day:{start.day})"]
+    if end is not None:
+        parts.append(f"end:(year:{end.year},month:{end.month},day:{end.day})")
+    return f"({','.join(parts)})"
+
+
+def _format_urn_list(values: list[str]) -> str:
+    """Build the Rest.li `List(a,b,c)` value used for list-typed query parameters."""
+    return f"List({','.join(values)})"

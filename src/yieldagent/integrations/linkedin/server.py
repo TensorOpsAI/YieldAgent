@@ -11,13 +11,14 @@ Optional env: LINKEDIN_API_VERSION (default 202405),
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from yieldagent.domain import Campaign
 
-from .client import LinkedInClient
+from .client import AnalyticsPivot, LinkedInClient, TimeGranularity
 from .config import LinkedInConfig
 from .mapping import (
     DEFAULT_CAMPAIGN_TYPE,
@@ -189,6 +190,147 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
             )
 
     return result
+
+
+# -- Ad Analytics (read-only) ----------------------------------------------
+
+_DEFAULT_ANALYTICS_FIELDS = [
+    "impressions",
+    "clicks",
+    "costInLocalCurrency",
+    "externalWebsiteConversions",
+    "oneClickLeads",
+    "landingPageClicks",
+    "likes",
+    "shares",
+    "dateRange",
+    "pivotValues",
+]
+
+
+def _parse_iso_date(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"date must be ISO YYYY-MM-DD, got {value!r}") from exc
+
+
+@mcp.tool()
+async def get_campaign_analytics(
+    campaign_urns: list[str],
+    date_start: str,
+    date_end: str | None = None,
+    pivot: AnalyticsPivot = "CAMPAIGN",
+    time_granularity: TimeGranularity = "ALL",
+    fields: list[str] | None = None,
+) -> dict[str, Any]:
+    """Read-only: pull Ad Analytics for one or more campaigns.
+
+    `date_start` / `date_end` accept ISO `YYYY-MM-DD` strings; `date_end` is
+    optional (open range). `pivot` controls how rows are grouped (CAMPAIGN,
+    CREATIVE, MEMBER_*, etc.).
+    """
+    start = _parse_iso_date(date_start)
+    end = _parse_iso_date(date_end) if date_end else None
+    async with _client() as client:
+        return await client.get_ad_analytics(
+            pivot=pivot,
+            date_start=start,
+            date_end=end,
+            time_granularity=time_granularity,
+            campaign_urns=campaign_urns,
+            fields=fields or _DEFAULT_ANALYTICS_FIELDS,
+        )
+
+
+@mcp.tool()
+async def get_creative_analytics(
+    creative_urns: list[str],
+    date_start: str,
+    date_end: str | None = None,
+    time_granularity: TimeGranularity = "DAILY",
+    fields: list[str] | None = None,
+) -> dict[str, Any]:
+    """Read-only: pull Ad Analytics broken down by creative.
+
+    Same shape as `get_campaign_analytics` but scoped to creative URNs and
+    pivoted by `CREATIVE`. Defaults to DAILY granularity so the caller can
+    plot a curve / detect drift.
+    """
+    start = _parse_iso_date(date_start)
+    end = _parse_iso_date(date_end) if date_end else None
+    async with _client() as client:
+        return await client.get_ad_analytics(
+            pivot="CREATIVE",
+            date_start=start,
+            date_end=end,
+            time_granularity=time_granularity,
+            creative_urns=creative_urns,
+            fields=fields or _DEFAULT_ANALYTICS_FIELDS,
+        )
+
+
+@mcp.tool()
+async def get_account_analytics(
+    date_start: str,
+    date_end: str | None = None,
+    pivot: AnalyticsPivot = "ACCOUNT",
+    time_granularity: TimeGranularity = "ALL",
+    fields: list[str] | None = None,
+) -> dict[str, Any]:
+    """Read-only: pull Ad Analytics scoped to the configured ad account.
+
+    Useful for "what did we spend overall last week" without enumerating
+    campaign URNs. Pivot defaults to ACCOUNT but can be set to any pivot
+    LinkedIn supports for an account-scoped query.
+    """
+    start = _parse_iso_date(date_start)
+    end = _parse_iso_date(date_end) if date_end else None
+    async with _client() as client:
+        return await client.get_ad_analytics(
+            pivot=pivot,
+            date_start=start,
+            date_end=end,
+            time_granularity=time_granularity,
+            account_urns=[client.config.account_urn],
+            fields=fields or _DEFAULT_ANALYTICS_FIELDS,
+        )
+
+
+@mcp.tool()
+async def compare_campaign_periods(
+    campaign_urns: list[str],
+    current_start: str,
+    current_end: str,
+    baseline_start: str,
+    baseline_end: str,
+    fields: list[str] | None = None,
+) -> dict[str, Any]:
+    """Read-only: pull aggregate metrics for the same campaigns over two windows.
+
+    Returns `{current: <analytics>, baseline: <analytics>}`. The agent can
+    diff CTR / CPL / spend to spot week-over-week drift. Both windows use
+    `timeGranularity=ALL` so each campaign collapses to a single row.
+    """
+    metrics = fields or _DEFAULT_ANALYTICS_FIELDS
+    async with _client() as client:
+        current = await client.get_ad_analytics(
+            pivot="CAMPAIGN",
+            date_start=_parse_iso_date(current_start),
+            date_end=_parse_iso_date(current_end),
+            time_granularity="ALL",
+            campaign_urns=campaign_urns,
+            fields=metrics,
+        )
+        baseline = await client.get_ad_analytics(
+            pivot="CAMPAIGN",
+            date_start=_parse_iso_date(baseline_start),
+            date_end=_parse_iso_date(baseline_end),
+            time_granularity="ALL",
+            campaign_urns=campaign_urns,
+            fields=metrics,
+        )
+    return {"current": current, "baseline": baseline}
 
 
 def main() -> None:
