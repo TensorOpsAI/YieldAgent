@@ -26,6 +26,7 @@ from .mapping import (
     campaign_objective,
     creative_content,
     flight_to_run_schedule,
+    hash_email_for_dmp,
     line_item_locale,
     money_to_linkedin_amount,
 )
@@ -461,6 +462,139 @@ async def compare_campaign_periods(
             fields=metrics,
         )
     return {"current": current, "baseline": baseline}
+
+
+# -- Matched Audiences (credential_sensitive, gated by confirm for upload) --
+
+
+@mcp.tool()
+async def create_dmp_segment(
+    name: str,
+    segment_type: str = "COMPANY_LIST_UPLOAD",
+    source_platform: str = "LIST_UPLOAD",
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Create a DMP Segment under the configured ad account.
+
+    Requires the `rw_dmp_segments` OAuth scope. Returns a dry-run preview
+    when `confirm` is False so the operator can verify name + type before a
+    write. Types: COMPANY_LIST_UPLOAD / USER_LIST_UPLOAD for CSV uploads,
+    COMPANY / USER for streaming dynamic add/remove.
+    """
+    if not confirm:
+        return {
+            "dry_run": True,
+            "method": "POST",
+            "endpoint": "/dmpSegments",
+            "body": {
+                "account": LinkedInConfig.from_env().account_urn,
+                "destinations": [{"destination": "LINKEDIN"}],
+                "name": name,
+                "sourcePlatform": source_platform,
+                "type": segment_type,
+            },
+            "hint": "Re-call with confirm=True to create the segment.",
+        }
+    async with _client() as client:
+        client.assert_account_allowed()
+        return await client.create_dmp_segment(
+            name=name,
+            segment_type=segment_type,  # type: ignore[arg-type]
+            source_platform=source_platform,  # type: ignore[arg-type]
+        )
+
+
+@mcp.tool()
+async def get_dmp_segment(segment_id: str) -> dict[str, Any]:
+    """Read-only: fetch a DMP segment's status. READY means the adSegment URN is targetable."""
+    async with _client() as client:
+        return await client.get_dmp_segment(segment_id)
+
+
+@mcp.tool()
+async def upload_audience_csv(
+    segment_id: str,
+    csv_bytes_b64: str,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Spend-or-publish: upload a CSV to an existing DMP segment.
+
+    `csv_bytes_b64` must be a base64-encoded CSV body (so the MCP tool
+    surface stays text-safe). The full LinkedIn handshake is:
+    `generateUploadUrl` → POST CSV bytes → `attach_dmp_list`. Confirm=False
+    returns the URLs + media URN it would attach without actually attaching.
+    """
+    import base64
+
+    csv_bytes = base64.b64decode(csv_bytes_b64)
+    async with _client() as client:
+        client.assert_account_allowed()
+        url_resp = await client.generate_dmp_upload_url()
+        upload_url = url_resp.get("value")
+        if not upload_url:
+            raise RuntimeError(
+                "generateUploadUrl returned no value; check rw_dmp_segments scope"
+            )
+        media_urn = await client.upload_dmp_csv(upload_url, csv_bytes)
+        if not confirm:
+            return {
+                "dry_run": True,
+                "upload_url": upload_url,
+                "media_urn": media_urn,
+                "next": f"POST /dmpSegments/{segment_id}/listUploads",
+                "hint": "Re-call with confirm=True to attach this upload.",
+            }
+        attach = await client.attach_dmp_list(segment_id, media_urn)
+        return {"applied": True, "media_urn": media_urn, "attach": attach}
+
+
+@mcp.tool()
+async def hash_emails_for_audience(emails: list[str]) -> list[str]:
+    """Read-only utility: SHA256-hex-hash a list of emails (lowercased, trimmed).
+
+    Returned strings match LinkedIn's expected format for contact-list
+    matched-audience uploads. Does not touch the network.
+    """
+    return [hash_email_for_dmp(email) for email in emails]
+
+
+@mcp.tool()
+async def add_dmp_users(
+    segment_id: str,
+    hashed_emails: list[str] | None = None,
+    google_aids: list[str] | None = None,
+    action: str = "ADD",
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Spend-or-publish: streaming add/remove for `sourcePlatform=API`, `type=USER` segments.
+
+    Provide pre-hashed emails (use `hash_emails_for_audience` first).
+    Confirm=False returns the payload preview without hitting LinkedIn.
+    """
+    if action.upper() not in {"ADD", "REMOVE"}:
+        raise ValueError("action must be 'ADD' or 'REMOVE'")
+    if not (hashed_emails or google_aids):
+        raise ValueError("add_dmp_users requires hashed_emails or google_aids")
+    if not confirm:
+        ids: list[dict[str, str]] = []
+        for email in hashed_emails or []:
+            ids.append({"idType": "SHA256_EMAIL", "idValue": email})
+        for gaid in google_aids or []:
+            ids.append({"idType": "GOOGLE_AID", "idValue": gaid})
+        return {
+            "dry_run": True,
+            "endpoint": f"/dmpSegments/{segment_id}/users",
+            "body": {"elements": [{"action": action.upper(), "userIds": ids}]},
+            "hint": "Re-call with confirm=True to send.",
+        }
+    async with _client() as client:
+        client.assert_account_allowed()
+        return await client.add_dmp_users(
+            segment_id,
+            hashed_emails=hashed_emails,
+            google_aids=google_aids,
+            action=action.upper(),  # type: ignore[arg-type]
+        )
 
 
 def main() -> None:

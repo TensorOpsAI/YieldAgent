@@ -17,6 +17,7 @@ naming is the only thing that shifts.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, time, timezone
 from typing import Any
 
@@ -180,6 +181,17 @@ def creative_content(creative: CreativeAsset) -> dict[str, Any]:
     return content
 
 
+def hash_email_for_dmp(email: str) -> str:
+    """Hash an email per LinkedIn's matched-audience contract.
+
+    LinkedIn matches contact-list uploads against members using lowercased,
+    whitespace-stripped, SHA256-hex-hashed emails. The hash is case-insensitive
+    in their parser; we emit lowercase hex for consistency.
+    """
+    normalized = email.strip().lower()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 __all__ = [
     "DEFAULT_CAMPAIGN_TYPE",
     "ISO_TO_LINKEDIN_GEO_URN",
@@ -188,6 +200,7 @@ __all__ = [
     "campaign_objective",
     "creative_content",
     "flight_to_run_schedule",
+    "hash_email_for_dmp",
     "line_item_locale",
     "line_item_payload",
     "money_to_linkedin_amount",

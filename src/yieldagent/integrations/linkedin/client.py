@@ -404,6 +404,121 @@ class LinkedInClient:
             confirm=confirm,
         )
 
+    # -- Matched Audiences (DMP segments) -------------------------------
+    #
+    # Requires the `rw_dmp_segments` OAuth scope, which is a separate program
+    # approval from the base Marketing API. Reads on dmpSegments/listUploads
+    # also accept `rw_ads`.
+
+    async def create_dmp_segment(
+        self,
+        *,
+        name: str,
+        segment_type: Literal[
+            "COMPANY_LIST_UPLOAD", "USER_LIST_UPLOAD", "COMPANY", "USER"
+        ] = "COMPANY_LIST_UPLOAD",
+        source_platform: Literal["LIST_UPLOAD", "API"] = "LIST_UPLOAD",
+    ) -> dict[str, Any]:
+        """Create a DMP Segment under the configured ad account.
+
+        For CSV uploads use the default `LIST_UPLOAD` source platform with a
+        `*_LIST_UPLOAD` type. For streaming dynamic add/remove via the
+        `dmpSegments/{id}/users` endpoint, pass `source_platform="API"` and
+        `segment_type="USER"` / `"COMPANY"`.
+        """
+        payload: dict[str, Any] = {
+            "account": self.config.account_urn,
+            "destinations": [{"destination": "LINKEDIN"}],
+            "name": name,
+            "sourcePlatform": source_platform,
+            "type": segment_type,
+        }
+        return await self._request("POST", "/dmpSegments", json=payload)
+
+    async def get_dmp_segment(self, segment_id: str) -> dict[str, Any]:
+        """Fetch a DMP segment's current state, including `destinationSegmentId` once READY."""
+        return await self._request("GET", f"/dmpSegments/{segment_id}")
+
+    async def generate_dmp_upload_url(self) -> dict[str, Any]:
+        """Request a one-shot upload URL for a DMP list-upload CSV.
+
+        LinkedIn returns `{value: <ambry_url>}`. Pass the URL to
+        `upload_dmp_csv` to stream the CSV body, then use the returned media
+        URN with `attach_dmp_list`.
+        """
+        payload = {"owner": self.config.account_urn}
+        return await self._request(
+            "POST",
+            "/dmpSegments?action=generateUploadUrl",
+            json=payload,
+        )
+
+    async def upload_dmp_csv(self, upload_url: str, csv_bytes: bytes) -> str:
+        """POST CSV bytes to the upload URL; return the media URN.
+
+        Note that `upload_url` is on `www.linkedin.com/ambry/`, not the API
+        host, so this call bypasses the regular `/rest` prefix. We still
+        send the bearer token; LinkedIn-Version is not required for ambry.
+        The media URN comes back in the `location` response header.
+        """
+        response = await self._http.post(
+            upload_url,
+            content=csv_bytes,
+            headers={
+                "Authorization": f"Bearer {self.config.access_token}",
+                "Content-Type": "text/csv",
+            },
+        )
+        if response.status_code >= 400:
+            try:
+                payload: Any = response.json()
+            except ValueError:
+                payload = response.text
+            raise LinkedInError(response.status_code, payload)
+        location = response.headers.get("location")
+        if not location:
+            raise LinkedInError(
+                502, {"error": "DMP upload response did not include a location header"}
+            )
+        # LinkedIn returns either `/AAYA...csv` or a full `urn:li:media:...` value.
+        if location.startswith("urn:"):
+            return location
+        return f"urn:li:media:{location}"
+
+    async def attach_dmp_list(self, segment_id: str, media_urn: str) -> dict[str, Any]:
+        """Attach an uploaded CSV (referenced by media URN) to a DMP segment."""
+        return await self._request(
+            "POST",
+            f"/dmpSegments/{segment_id}/listUploads",
+            json={"inputFile": media_urn},
+        )
+
+    async def add_dmp_users(
+        self,
+        segment_id: str,
+        *,
+        hashed_emails: list[str] | None = None,
+        google_aids: list[str] | None = None,
+        action: Literal["ADD", "REMOVE"] = "ADD",
+    ) -> dict[str, Any]:
+        """Streaming dynamic add/remove for `sourcePlatform=API`, `type=USER` segments.
+
+        Pass SHA256-lowercase-hex hashed emails and/or Google Android IDs.
+        Use a `LIST_UPLOAD` segment instead if you need a one-shot CSV load.
+        """
+        ids: list[dict[str, str]] = []
+        for email in hashed_emails or []:
+            ids.append({"idType": "SHA256_EMAIL", "idValue": email})
+        for gaid in google_aids or []:
+            ids.append({"idType": "GOOGLE_AID", "idValue": gaid})
+        if not ids:
+            raise ValueError("add_dmp_users requires hashed_emails or google_aids")
+        return await self._request(
+            "POST",
+            f"/dmpSegments/{segment_id}/users",
+            json={"elements": [{"action": action, "userIds": ids}]},
+        )
+
     # -- Ad Analytics ----------------------------------------------------
 
     async def get_ad_analytics(
