@@ -16,8 +16,12 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from yieldagent.domain import Campaign
+from yieldagent.integrations.browser_fallback import (
+    browser_fallback_response,
+    is_gated_platform_error,
+)
 
-from .client import LinkedInClient
+from .client import LinkedInClient, LinkedInError
 from .config import LinkedInConfig
 from .mapping import (
     DEFAULT_CAMPAIGN_TYPE,
@@ -43,11 +47,28 @@ def _strip_unresolved(targeting: dict[str, Any]) -> tuple[dict[str, Any], dict[s
     return wire, unresolved
 
 
+def _browser_fallback_for(error: LinkedInError, operation: str) -> dict[str, Any] | None:
+    if not is_gated_platform_error(error.status_code, error.payload):
+        return None
+    return browser_fallback_response(
+        platform="LinkedIn",
+        operation=operation,
+        status_code=error.status_code,
+        payload=error.payload,
+    )
+
+
 @mcp.tool()
 async def get_ad_account() -> dict[str, Any]:
     """Return metadata for the configured LinkedIn ad account."""
     async with _client() as client:
-        return await client.get_ad_account()
+        try:
+            return await client.get_ad_account()
+        except LinkedInError as exc:
+            fallback = _browser_fallback_for(exc, "get_ad_account")
+            if fallback:
+                return fallback
+            raise
 
 
 @mcp.tool()
@@ -56,11 +77,17 @@ async def create_campaign_group(
 ) -> dict[str, Any]:
     """Create a DRAFT Campaign Group on the configured account."""
     async with _client() as client:
-        client.assert_account_allowed()
-        return await client.create_campaign_group(
-            name=name,
-            total_budget={"amount": total_budget_amount, "currencyCode": currency.upper()},
-        )
+        try:
+            client.assert_account_allowed()
+            return await client.create_campaign_group(
+                name=name,
+                total_budget={"amount": total_budget_amount, "currencyCode": currency.upper()},
+            )
+        except LinkedInError as exc:
+            fallback = _browser_fallback_for(exc, "create_campaign_group")
+            if fallback:
+                return fallback
+            raise
 
 
 @mcp.tool()
@@ -79,25 +106,37 @@ async def create_campaign(
 ) -> dict[str, Any]:
     """Create a DRAFT Campaign (= YieldAgent LineItem) under a Campaign Group."""
     async with _client() as client:
-        client.assert_account_allowed()
-        return await client.create_campaign(
-            campaign_group_urn=campaign_group_urn,
-            name=name,
-            objective_type=objective_type,
-            campaign_type=campaign_type,
-            total_budget={"amount": total_budget_amount, "currencyCode": currency.upper()},
-            run_schedule={"start": start_epoch_ms, "end": end_epoch_ms},
-            targeting_criteria=targeting_criteria,
-            locale={"country": locale_country.upper(), "language": locale_language.lower()},
-        )
+        try:
+            client.assert_account_allowed()
+            return await client.create_campaign(
+                campaign_group_urn=campaign_group_urn,
+                name=name,
+                objective_type=objective_type,
+                campaign_type=campaign_type,
+                total_budget={"amount": total_budget_amount, "currencyCode": currency.upper()},
+                run_schedule={"start": start_epoch_ms, "end": end_epoch_ms},
+                targeting_criteria=targeting_criteria,
+                locale={"country": locale_country.upper(), "language": locale_language.lower()},
+            )
+        except LinkedInError as exc:
+            fallback = _browser_fallback_for(exc, "create_campaign")
+            if fallback:
+                return fallback
+            raise
 
 
 @mcp.tool()
 async def create_creative(campaign_urn: str, content: dict[str, Any]) -> dict[str, Any]:
     """Create a DRAFT Creative (= YieldAgent Ad) under a Campaign."""
     async with _client() as client:
-        client.assert_account_allowed()
-        return await client.create_creative(campaign_urn=campaign_urn, content=content)
+        try:
+            client.assert_account_allowed()
+            return await client.create_creative(campaign_urn=campaign_urn, content=content)
+        except LinkedInError as exc:
+            fallback = _browser_fallback_for(exc, "create_creative")
+            if fallback:
+                return fallback
+            raise
 
 
 @mcp.tool()
@@ -118,75 +157,84 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
 
     result: dict[str, Any] = {"line_items": [], "ads": [], "notes": {}}
     async with LinkedInClient(config) as client:
-        client.assert_account_allowed()
+        try:
+            client.assert_account_allowed()
 
-        # Choose a campaign-group total budget: explicit lifetime_budget if set,
-        # otherwise the sum of line-item budgets in the first line item's currency.
-        if parsed.lifetime_budget is not None:
-            group_amount = parsed.lifetime_budget.amount
-            group_currency = parsed.lifetime_budget.currency
-        elif parsed.line_items:
-            group_currency = parsed.line_items[0].budget.currency
-            group_amount = sum(
-                li.budget.amount for li in parsed.line_items if li.budget.currency == group_currency
-            )
-        else:
-            raise ValueError("Campaign has no line_items and no lifetime_budget")
-
-        group = await client.create_campaign_group(
-            name=parsed.name,
-            total_budget=money_to_linkedin_amount(group_amount, group_currency),
-        )
-        group_urn = f"urn:li:sponsoredCampaignGroup:{group['id']}"
-        result["campaign_id"] = group["id"]
-        result["campaign_group_urn"] = group_urn
-
-        objective_type = campaign_objective(parsed)
-
-        line_item_urns: dict[str, str] = {}
-        unresolved_by_li: dict[str, dict[str, Any]] = {}
-        for li in parsed.line_items:
-            targeting, unresolved = _strip_unresolved(
-                audience_to_targeting(li.targeting.audience)
-            )
-            if unresolved:
-                unresolved_by_li[li.name] = unresolved
-            run_schedule = flight_to_run_schedule(li.flight)
-            created = await client.create_campaign(
-                campaign_group_urn=group_urn,
-                name=li.name,
-                objective_type=objective_type,
-                campaign_type=DEFAULT_CAMPAIGN_TYPE,
-                total_budget=money_to_linkedin_amount(li.budget.amount, li.budget.currency),
-                run_schedule=run_schedule,
-                targeting_criteria=targeting,
-                locale=line_item_locale(li.targeting.audience),
-            )
-            urn = f"urn:li:sponsoredCampaign:{created['id']}"
-            line_item_urns[li.name] = urn
-            result["line_items"].append({"name": li.name, "id": created["id"], "urn": urn})
-
-        for ad in parsed.ads:
-            campaign_urn = line_item_urns.get(ad.line_item_name)
-            if not campaign_urn:
-                raise ValueError(
-                    f"Ad {ad.name!r} references unknown line_item_name {ad.line_item_name!r}"
+            # Choose a campaign-group total budget: explicit lifetime_budget if set,
+            # otherwise the sum of line-item budgets in the first line item's currency.
+            if parsed.lifetime_budget is not None:
+                group_amount = parsed.lifetime_budget.amount
+                group_currency = parsed.lifetime_budget.currency
+            elif parsed.line_items:
+                group_currency = parsed.line_items[0].budget.currency
+                group_amount = sum(
+                    li.budget.amount
+                    for li in parsed.line_items
+                    if li.budget.currency == group_currency
                 )
-            created = await client.create_creative(
-                campaign_urn=campaign_urn,
-                content=creative_content(ad.creative),
-            )
-            result["ads"].append(
-                {"name": ad.name, "id": created.get("id"), "campaign_urn": campaign_urn}
-            )
+            else:
+                raise ValueError("Campaign has no line_items and no lifetime_budget")
 
-        if unresolved_by_li:
-            result["notes"]["unresolved_b2b_targeting"] = unresolved_by_li
-            result["notes"]["unresolved_b2b_hint"] = (
-                "These B2B facets are present on the Brief audience but were not pushed to "
-                "LinkedIn — they require URN resolution via the typeahead endpoint, which is "
-                "not wired in this slice. Add them manually in Campaign Manager before activation."
+            group = await client.create_campaign_group(
+                name=parsed.name,
+                total_budget=money_to_linkedin_amount(group_amount, group_currency),
             )
+            group_urn = f"urn:li:sponsoredCampaignGroup:{group['id']}"
+            result["campaign_id"] = group["id"]
+            result["campaign_group_urn"] = group_urn
+
+            objective_type = campaign_objective(parsed)
+
+            line_item_urns: dict[str, str] = {}
+            unresolved_by_li: dict[str, dict[str, Any]] = {}
+            for li in parsed.line_items:
+                targeting, unresolved = _strip_unresolved(
+                    audience_to_targeting(li.targeting.audience)
+                )
+                if unresolved:
+                    unresolved_by_li[li.name] = unresolved
+                run_schedule = flight_to_run_schedule(li.flight)
+                created = await client.create_campaign(
+                    campaign_group_urn=group_urn,
+                    name=li.name,
+                    objective_type=objective_type,
+                    campaign_type=DEFAULT_CAMPAIGN_TYPE,
+                    total_budget=money_to_linkedin_amount(li.budget.amount, li.budget.currency),
+                    run_schedule=run_schedule,
+                    targeting_criteria=targeting,
+                    locale=line_item_locale(li.targeting.audience),
+                )
+                urn = f"urn:li:sponsoredCampaign:{created['id']}"
+                line_item_urns[li.name] = urn
+                result["line_items"].append({"name": li.name, "id": created["id"], "urn": urn})
+
+            for ad in parsed.ads:
+                campaign_urn = line_item_urns.get(ad.line_item_name)
+                if not campaign_urn:
+                    raise ValueError(
+                        f"Ad {ad.name!r} references unknown line_item_name {ad.line_item_name!r}"
+                    )
+                created = await client.create_creative(
+                    campaign_urn=campaign_urn,
+                    content=creative_content(ad.creative),
+                )
+                result["ads"].append(
+                    {"name": ad.name, "id": created.get("id"), "campaign_urn": campaign_urn}
+                )
+
+            if unresolved_by_li:
+                result["notes"]["unresolved_b2b_targeting"] = unresolved_by_li
+                result["notes"]["unresolved_b2b_hint"] = (
+                    "These B2B facets are present on the Brief audience but were not pushed to "
+                    "LinkedIn - they require URN resolution via the typeahead endpoint, which is "
+                    "not wired in this slice. Add them manually in Campaign Manager before "
+                    "activation."
+                )
+        except LinkedInError as exc:
+            fallback = _browser_fallback_for(exc, "publish_draft_campaign")
+            if fallback:
+                return fallback
+            raise
 
     return result
 
