@@ -49,6 +49,9 @@ The slice is the smallest end-to-end exercise of pillars 3, 5 (partially) and 6.
 - **The publish step only creates `PAUSED` objects.** The Meta MCP client refuses to set anything to `ACTIVE`. Flipping status live is out of scope for the agent — it is a separate human action in Meta Business Manager.
 - **The Meta MCP server refuses non-test ad accounts.** Every write tool calls `MetaClient.assert_test_account` first; live accounts require `YIELDAGENT_ALLOW_LIVE=1` to be set explicitly.
 - **Approval is structural, not advisory.** The graph cannot transition to `publish_draft` without `human_gate` resuming with `approved=True`. The interrupt is implemented with LangGraph's native `interrupt()` + checkpointer, so a rejected run leaves no partial publish.
+- **Gated platform APIs return a browser fallback hint.** When Meta or LinkedIn returns an OAuth scope, app-review, partner-program, or authorization error, the MCP tool returns `{ "needs_browser_fallback": true, "fallback_tool": "browser.run_playwright_flow", ... }` instead of hiding the reason behind a generic exception. The fallback is always `credential_sensitive`, requires explicit approval, and must show a dry-run preview before driving an authenticated browser session.
+
+Agent rule: when a platform API returns a scope or approval error, propose the browser fallback via the existing browser-control tool instead of returning the raw error to the user. Do not auto-run that fallback.
 
 ## Running
 

@@ -14,14 +14,18 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from yieldagent.domain import Campaign
+from yieldagent.integrations.browser_fallback import (
+    browser_fallback_response,
+    is_gated_platform_error,
+)
 
-from .client import MetaClient
+from .client import MetaClient, MetaError
 from .config import MetaConfig
 from .mapping import (
+    audience_to_targeting,
     campaign_objective,
     creative_payload,
     flight_to_meta_times,
-    audience_to_targeting,
     to_minor_units,
 )
 
@@ -32,11 +36,28 @@ def _client() -> MetaClient:
     return MetaClient(MetaConfig.from_env())
 
 
+def _browser_fallback_for(error: MetaError, operation: str) -> dict[str, Any] | None:
+    if not is_gated_platform_error(error.status_code, error.payload):
+        return None
+    return browser_fallback_response(
+        platform="Meta",
+        operation=operation,
+        status_code=error.status_code,
+        payload=error.payload,
+    )
+
+
 @mcp.tool()
 async def get_ad_account() -> dict[str, Any]:
     """Return metadata for the configured Meta ad account."""
     async with _client() as client:
-        return await client.get_ad_account()
+        try:
+            return await client.get_ad_account()
+        except MetaError as exc:
+            fallback = _browser_fallback_for(exc, "get_ad_account")
+            if fallback:
+                return fallback
+            raise
 
 
 @mcp.tool()
@@ -46,8 +67,14 @@ async def create_campaign(name: str, objective: str) -> dict[str, Any]:
     `objective` must be a Meta OUTCOME_* value (e.g. OUTCOME_SALES).
     """
     async with _client() as client:
-        await client.assert_test_account()
-        return await client.create_campaign(name=name, objective=objective)
+        try:
+            await client.assert_test_account()
+            return await client.create_campaign(name=name, objective=objective)
+        except MetaError as exc:
+            fallback = _browser_fallback_for(exc, "create_campaign")
+            if fallback:
+                return fallback
+            raise
 
 
 @mcp.tool()
@@ -66,23 +93,35 @@ async def create_ad_set(
     targeting spec — at minimum `geo_locations`.
     """
     async with _client() as client:
-        await client.assert_test_account()
-        return await client.create_ad_set(
-            campaign_id=campaign_id,
-            name=name,
-            lifetime_budget_minor=lifetime_budget_minor,
-            start_time=start_time,
-            end_time=end_time,
-            targeting=targeting,
-        )
+        try:
+            await client.assert_test_account()
+            return await client.create_ad_set(
+                campaign_id=campaign_id,
+                name=name,
+                lifetime_budget_minor=lifetime_budget_minor,
+                start_time=start_time,
+                end_time=end_time,
+                targeting=targeting,
+            )
+        except MetaError as exc:
+            fallback = _browser_fallback_for(exc, "create_ad_set")
+            if fallback:
+                return fallback
+            raise
 
 
 @mcp.tool()
 async def create_ad(ad_set_id: str, name: str, creative: dict[str, Any]) -> dict[str, Any]:
     """Create a PAUSED ad under an ad set with the given creative spec."""
     async with _client() as client:
-        await client.assert_test_account()
-        return await client.create_ad(ad_set_id=ad_set_id, name=name, creative=creative)
+        try:
+            await client.assert_test_account()
+            return await client.create_ad(ad_set_id=ad_set_id, name=name, creative=creative)
+        except MetaError as exc:
+            fallback = _browser_fallback_for(exc, "create_ad")
+            if fallback:
+                return fallback
+            raise
 
 
 @mcp.tool()
@@ -100,39 +139,45 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
 
     result: dict[str, Any] = {"line_items": [], "ads": []}
     async with MetaClient(config) as client:
-        await client.assert_test_account()
+        try:
+            await client.assert_test_account()
 
-        camp = await client.create_campaign(
-            name=parsed.name, objective=campaign_objective(parsed)
-        )
-        result["campaign_id"] = camp["id"]
-
-        line_item_ids: dict[str, str] = {}
-        for li in parsed.line_items:
-            start, end = flight_to_meta_times(li.flight)
-            ad_set = await client.create_ad_set(
-                campaign_id=camp["id"],
-                name=li.name,
-                lifetime_budget_minor=to_minor_units(li.budget.amount, li.budget.currency),
-                start_time=start,
-                end_time=end,
-                targeting=audience_to_targeting(li.targeting.audience),
+            camp = await client.create_campaign(
+                name=parsed.name, objective=campaign_objective(parsed)
             )
-            line_item_ids[li.name] = ad_set["id"]
-            result["line_items"].append({"name": li.name, "id": ad_set["id"]})
+            result["campaign_id"] = camp["id"]
 
-        for ad in parsed.ads:
-            ad_set_id = line_item_ids.get(ad.line_item_name)
-            if not ad_set_id:
-                raise ValueError(
-                    f"Ad {ad.name!r} references unknown line_item_name {ad.line_item_name!r}"
+            line_item_ids: dict[str, str] = {}
+            for li in parsed.line_items:
+                start, end = flight_to_meta_times(li.flight)
+                ad_set = await client.create_ad_set(
+                    campaign_id=camp["id"],
+                    name=li.name,
+                    lifetime_budget_minor=to_minor_units(li.budget.amount, li.budget.currency),
+                    start_time=start,
+                    end_time=end,
+                    targeting=audience_to_targeting(li.targeting.audience),
                 )
-            created = await client.create_ad(
-                ad_set_id=ad_set_id,
-                name=ad.name,
-                creative=creative_payload(ad.creative, page_id=config.page_id),
-            )
-            result["ads"].append({"name": ad.name, "id": created["id"]})
+                line_item_ids[li.name] = ad_set["id"]
+                result["line_items"].append({"name": li.name, "id": ad_set["id"]})
+
+            for ad in parsed.ads:
+                ad_set_id = line_item_ids.get(ad.line_item_name)
+                if not ad_set_id:
+                    raise ValueError(
+                        f"Ad {ad.name!r} references unknown line_item_name {ad.line_item_name!r}"
+                    )
+                created = await client.create_ad(
+                    ad_set_id=ad_set_id,
+                    name=ad.name,
+                    creative=creative_payload(ad.creative, page_id=config.page_id),
+                )
+                result["ads"].append({"name": ad.name, "id": created["id"]})
+        except MetaError as exc:
+            fallback = _browser_fallback_for(exc, "publish_draft_campaign")
+            if fallback:
+                return fallback
+            raise
 
     return result
 
