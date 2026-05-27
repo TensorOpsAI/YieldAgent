@@ -21,12 +21,28 @@ from .state import AgentState, AuditEntry
 DEFAULT_MODEL = "gemini-2.5-flash"
 
 
+def _resolve_model_name(model_name: str) -> str:
+    """Disambiguate bare `gemini-*` to Google AI Studio.
+
+    LangChain's init_chat_model routes bare `gemini-*` to Vertex AI by default,
+    which needs full GCP setup. Users with just a `GOOGLE_API_KEY` want the
+    Gemini API (Google AI Studio) — the `google_genai` provider — so we make
+    that choice explicit. Callers who want Vertex can still pass
+    `google_vertexai:gemini-...`.
+    """
+    if ":" in model_name:
+        return model_name
+    if model_name.startswith("gemini-"):
+        return f"google_genai:{model_name}"
+    return model_name
+
+
 def _audit(state: AgentState, entry: AuditEntry) -> list[AuditEntry]:
     return [*state.get("audit", []), entry]
 
 
 def make_parse_brief_node(model_name: str = DEFAULT_MODEL):
-    model = init_chat_model(model_name).with_structured_output(Brief)
+    model = init_chat_model(_resolve_model_name(model_name)).with_structured_output(Brief)
 
     async def parse_brief(state: AgentState) -> dict[str, Any]:
         brief = await model.ainvoke(
@@ -51,7 +67,7 @@ def make_parse_brief_node(model_name: str = DEFAULT_MODEL):
 
 
 def make_plan_campaign_node(model_name: str = DEFAULT_MODEL):
-    model = init_chat_model(model_name).with_structured_output(Campaign)
+    model = init_chat_model(_resolve_model_name(model_name)).with_structured_output(Campaign)
 
     async def plan_campaign(state: AgentState) -> dict[str, Any]:
         brief = state["brief"]
