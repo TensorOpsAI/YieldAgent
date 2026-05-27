@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain_anthropic import ChatAnthropic
+from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import interrupt
 
@@ -13,7 +13,12 @@ from yieldagent.domain import Brief, Campaign, CampaignStatus
 from .prompts import PARSE_BRIEF_SYSTEM, PLAN_CAMPAIGN_SYSTEM
 from .state import AgentState, AuditEntry
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
+# Provider is inferred from the model name by init_chat_model:
+#   gemini-*         -> google_genai (requires GOOGLE_API_KEY)
+#   claude-*         -> anthropic    (requires ANTHROPIC_API_KEY)
+#   gpt-*            -> openai       (requires OPENAI_API_KEY)
+# Override at the CLI via --model, or pass an explicit "provider:model" string.
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 def _audit(state: AgentState, entry: AuditEntry) -> list[AuditEntry]:
@@ -21,7 +26,7 @@ def _audit(state: AgentState, entry: AuditEntry) -> list[AuditEntry]:
 
 
 def make_parse_brief_node(model_name: str = DEFAULT_MODEL):
-    model = ChatAnthropic(model_name=model_name).with_structured_output(Brief)
+    model = init_chat_model(model_name).with_structured_output(Brief)
 
     async def parse_brief(state: AgentState) -> dict[str, Any]:
         brief = await model.ainvoke(
@@ -46,7 +51,7 @@ def make_parse_brief_node(model_name: str = DEFAULT_MODEL):
 
 
 def make_plan_campaign_node(model_name: str = DEFAULT_MODEL):
-    model = ChatAnthropic(model_name=model_name).with_structured_output(Campaign)
+    model = init_chat_model(model_name).with_structured_output(Campaign)
 
     async def plan_campaign(state: AgentState) -> dict[str, Any]:
         brief = state["brief"]
