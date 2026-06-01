@@ -3,7 +3,7 @@
 Run with: `python -m yieldagent.integrations.linkedin.server`
 
 Required env: LINKEDIN_ACCESS_TOKEN, LINKEDIN_AD_ACCOUNT_ID
-Optional env: LINKEDIN_API_VERSION (default 202405),
+Optional env: LINKEDIN_API_VERSION (default 202605),
               LINKEDIN_ALLOWED_AD_ACCOUNTS (comma-separated allowlist),
               YIELDAGENT_ALLOW_LIVE (set to 1 to bypass the allowlist)
 """
@@ -16,6 +16,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from yieldagent.domain import Campaign
+from yieldagent.env import load_dotenv
 
 from .client import LinkedInClient
 from .config import LinkedInConfig
@@ -192,6 +193,7 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> None:
+    load_dotenv()
     asyncio.run(mcp.run_stdio_async())
 
 

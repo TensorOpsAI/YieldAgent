@@ -15,7 +15,7 @@ class LinkedInConfig:
     allowed_accounts: frozenset[str] = field(default_factory=frozenset)
 
     @classmethod
-    def from_env(cls) -> "LinkedInConfig":
+    def from_env(cls) -> LinkedInConfig:
         token = os.environ.get("LINKEDIN_ACCESS_TOKEN")
         account = os.environ.get("LINKEDIN_AD_ACCOUNT_ID")
         if not token:
@@ -34,7 +34,7 @@ class LinkedInConfig:
         return cls(
             access_token=token,
             ad_account_id=account,
-            api_version=os.environ.get("LINKEDIN_API_VERSION", "202405"),
+            api_version=os.environ.get("LINKEDIN_API_VERSION", "202605"),
             allow_live=os.environ.get("YIELDAGENT_ALLOW_LIVE") == "1",
             allowed_accounts=allowed,
         )

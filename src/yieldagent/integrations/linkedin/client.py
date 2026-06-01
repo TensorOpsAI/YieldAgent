@@ -37,7 +37,7 @@ class LinkedInClient:
         self._http = http or httpx.AsyncClient(timeout=30.0)
         self._owns_http = http is None
 
-    async def __aenter__(self) -> "LinkedInClient":
+    async def __aenter__(self) -> LinkedInClient:
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
@@ -147,7 +147,11 @@ class LinkedInClient:
             payload["totalBudget"] = total_budget
         if run_schedule is not None:
             payload["runSchedule"] = run_schedule
-        return await self._request("POST", "/adCampaignGroups", json=payload)
+        return await self._request(
+            "POST",
+            f"/adAccounts/{self.config.ad_account_id}/adCampaignGroups",
+            json=payload,
+        )
 
     async def create_campaign(
         self,
@@ -185,7 +189,11 @@ class LinkedInClient:
             payload["totalBudget"] = total_budget
         if unit_cost is not None:
             payload["unitCost"] = unit_cost
-        return await self._request("POST", "/adCampaigns", json=payload)
+        return await self._request(
+            "POST",
+            f"/adAccounts/{self.config.ad_account_id}/adCampaigns",
+            json=payload,
+        )
 
     async def create_creative(
         self,
@@ -200,4 +208,20 @@ class LinkedInClient:
             "content": content,
             "status": self._check_status(status),
         }
-        return await self._request("POST", "/creatives", json=payload)
+        return await self._request(
+            "POST",
+            f"/adAccounts/{self.config.ad_account_id}/creatives",
+            json=payload,
+        )
+
+    async def list_campaigns(self) -> dict[str, Any]:
+        """List campaigns under the configured ad account.
+
+        Read-only. Useful for smoke tests and for agents that need to know what
+        already exists before planning a new campaign.
+        """
+        return await self._request(
+            "GET",
+            f"/adAccounts/{self.config.ad_account_id}/adCampaigns",
+            params={"q": "search"},
+        )
