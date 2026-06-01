@@ -24,6 +24,7 @@ from .mapping import (
     DEFAULT_CAMPAIGN_TYPE,
     audience_to_targeting,
     campaign_objective,
+    campaign_run_schedule,
     creative_content,
     flight_to_run_schedule,
     line_item_locale,
@@ -137,6 +138,8 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
         group = await client.create_campaign_group(
             name=parsed.name,
             total_budget=money_to_linkedin_amount(group_amount, group_currency),
+            # LinkedIn now requires runSchedule on the group; span all line items.
+            run_schedule=campaign_run_schedule([li.flight for li in parsed.line_items]),
         )
         group_urn = f"urn:li:sponsoredCampaignGroup:{group['id']}"
         result["campaign_id"] = group["id"]

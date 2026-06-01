@@ -73,6 +73,19 @@ def flight_to_run_schedule(flight: Flight) -> dict[str, int]:
     return {"start": int(start.timestamp() * 1000), "end": int(end.timestamp() * 1000)}
 
 
+def campaign_run_schedule(flights: list[Flight]) -> dict[str, int]:
+    """Build a Campaign Group runSchedule that spans all its child Campaigns.
+
+    LinkedIn now requires `runSchedule` on `POST /adAccounts/{id}/adCampaignGroups`.
+    The group must cover the earliest start and latest end across its line items.
+    """
+    if not flights:
+        raise ValueError("Cannot compute runSchedule from empty list of flights")
+    earliest = min(f.start_date for f in flights)
+    latest = max(f.end_date for f in flights)
+    return flight_to_run_schedule(Flight(start_date=earliest, end_date=latest))
+
+
 def audience_to_targeting(audience: Audience) -> dict[str, Any]:
     """Build a LinkedIn `targetingCriteria` payload.
 
@@ -186,6 +199,7 @@ __all__ = [
     "OBJECTIVE_TO_LINKEDIN",
     "audience_to_targeting",
     "campaign_objective",
+    "campaign_run_schedule",
     "creative_content",
     "flight_to_run_schedule",
     "line_item_locale",
