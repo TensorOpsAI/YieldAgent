@@ -34,9 +34,13 @@ linkedin = [
 ]
 agent = [
     "langchain>=0.3",
-    "langchain-anthropic>=0.3",
     "langgraph>=0.2",
     "langchain-mcp-adapters>=0.1",
+    # All supported LLM providers are bundled; pick at runtime via --model.
+    # Required env var per provider: GOOGLE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY.
+    "langchain-google-genai>=2.0",
+    "langchain-anthropic>=0.3",
+    "langchain-openai>=0.2",
 ]
 dev = [
     "pytest>=8",
