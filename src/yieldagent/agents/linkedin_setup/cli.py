@@ -22,6 +22,7 @@ from uuid import uuid4
 from langgraph.types import Command
 
 from yieldagent.agents.campaign_setup.nodes import DEFAULT_MODEL
+from yieldagent.env import load_dotenv
 
 from .graph import build_graph
 
@@ -119,6 +120,7 @@ async def _run(brief_path: Path, *, auto_approve: bool, dry_run: bool, model_nam
 
 
 def main() -> int:
+    load_dotenv()
     parser = argparse.ArgumentParser(prog="yieldagent-linkedin-setup")
     parser.add_argument("brief", type=Path, help="Path to a markdown campaign brief")
     parser.add_argument(

@@ -43,7 +43,7 @@ Optional:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `LINKEDIN_API_VERSION` | `202405` | Versioned API header (`LinkedIn-Version`). |
+| `LINKEDIN_API_VERSION` | `202605` | Versioned API header (`LinkedIn-Version`). |
 | `LINKEDIN_ALLOWED_AD_ACCOUNTS` | unset | Comma-separated allowlist of ad account ids. The configured account must be in the list, or `YIELDAGENT_ALLOW_LIVE=1` must be set. |
 | `YIELDAGENT_ALLOW_LIVE` | unset | Set to `1` to bypass the allowlist. Disables the only safety net LinkedIn offers through this integration — use sparingly. |
 

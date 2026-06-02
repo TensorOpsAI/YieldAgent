@@ -20,6 +20,9 @@ from .config import LinkedInConfig
 
 _BASE_URL = "https://api.linkedin.com/rest"
 _FORBIDDEN_STATUSES = {"ACTIVE", "COMPLETED"}
+# LinkedIn's politicalIntent is a String enum, not a boolean. Sending a bool
+# fails with "enum type is not backed by a String".
+_POLITICAL_INTENT_VALUES = {"POLITICAL", "NOT_POLITICAL", "NOT_DECLARED"}
 
 
 class LinkedInError(RuntimeError):
@@ -37,7 +40,7 @@ class LinkedInClient:
         self._http = http or httpx.AsyncClient(timeout=30.0)
         self._owns_http = http is None
 
-    async def __aenter__(self) -> "LinkedInClient":
+    async def __aenter__(self) -> LinkedInClient:
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
@@ -147,7 +150,11 @@ class LinkedInClient:
             payload["totalBudget"] = total_budget
         if run_schedule is not None:
             payload["runSchedule"] = run_schedule
-        return await self._request("POST", "/adCampaignGroups", json=payload)
+        return await self._request(
+            "POST",
+            f"/adAccounts/{self.config.ad_account_id}/adCampaignGroups",
+            json=payload,
+        )
 
     async def create_campaign(
         self,
@@ -164,9 +171,16 @@ class LinkedInClient:
         unit_cost: dict[str, str] | None = None,
         cost_type: str = "CPC",
         status: str | None = None,
+        offsite_delivery_enabled: bool = False,
+        political_intent: str = "NOT_POLITICAL",
     ) -> dict[str, Any]:
         if (daily_budget is None) == (total_budget is None):
             raise ValueError("Provide exactly one of daily_budget or total_budget")
+        if political_intent not in _POLITICAL_INTENT_VALUES:
+            raise ValueError(
+                f"political_intent must be one of {sorted(_POLITICAL_INTENT_VALUES)}, "
+                f"got {political_intent!r}"
+            )
         payload: dict[str, Any] = {
             "account": self.config.account_urn,
             "campaignGroup": campaign_group_urn,
@@ -178,6 +192,10 @@ class LinkedInClient:
             "runSchedule": run_schedule,
             "targetingCriteria": targeting_criteria,
             "locale": locale,
+            # Both fields became required in current API versions. Safe defaults:
+            # LinkedIn-only delivery (no Audience Network) and non-political.
+            "offsiteDeliveryEnabled": offsite_delivery_enabled,
+            "politicalIntent": political_intent,
         }
         if daily_budget is not None:
             payload["dailyBudget"] = daily_budget
@@ -185,19 +203,80 @@ class LinkedInClient:
             payload["totalBudget"] = total_budget
         if unit_cost is not None:
             payload["unitCost"] = unit_cost
-        return await self._request("POST", "/adCampaigns", json=payload)
+        return await self._request(
+            "POST",
+            f"/adAccounts/{self.config.ad_account_id}/adCampaigns",
+            json=payload,
+        )
+
+    async def create_post(
+        self,
+        *,
+        author_urn: str,
+        commentary: str,
+        article: dict[str, Any] | None = None,
+        dsc_ad_account_urn: str | None = None,
+        feed_distribution: str = "NONE",
+    ) -> dict[str, Any]:
+        """Create a Post via the (non-account-scoped) Posts API.
+
+        A LinkedIn Creative cannot carry inline copy — it must reference a real
+        Post (share / ugcPost). For ads we create a *dark post* (Direct Sponsored
+        Content): authored by the advertiser org, `feedDistribution=NONE` so it
+        never shows on the page's organic feed, and an `adContext` tying it to the
+        sponsored account. Returns the new post URN under `id` (from `x-restli-id`).
+
+        `feedDistribution=NONE` makes LinkedIn treat the post as DSC, which *requires*
+        `adContext.dscAdAccount`. `dscAdType` must NOT be sent — it is read-only and
+        a 422 ("ReadOnly field present in a create request") results otherwise.
+        """
+        payload: dict[str, Any] = {
+            "author": author_urn,
+            "commentary": commentary,
+            "visibility": "PUBLIC",
+            "distribution": {
+                "feedDistribution": feed_distribution,
+                "targetEntities": [],
+                "thirdPartyDistributionChannels": [],
+            },
+            "lifecycleState": "PUBLISHED",
+            "isReshareDisabledByAuthor": False,
+        }
+        if article is not None:
+            payload["content"] = {"article": article}
+        if dsc_ad_account_urn is not None:
+            payload["adContext"] = {"dscAdAccount": dsc_ad_account_urn}
+        return await self._request("POST", "/posts", json=payload)
 
     async def create_creative(
         self,
         *,
         campaign_urn: str,
         content: dict[str, Any],
-        status: str | None = None,
+        intended_status: str | None = None,
     ) -> dict[str, Any]:
+        # The Creatives API rejects `account` (read-only) and uses `intendedStatus`
+        # (an enum) rather than `status`. `content` must reference a Post URN, e.g.
+        # {"reference": "urn:li:share:..."}.
         payload: dict[str, Any] = {
-            "account": self.config.account_urn,
             "campaign": campaign_urn,
             "content": content,
-            "status": self._check_status(status),
+            "intendedStatus": self._check_status(intended_status),
         }
-        return await self._request("POST", "/creatives", json=payload)
+        return await self._request(
+            "POST",
+            f"/adAccounts/{self.config.ad_account_id}/creatives",
+            json=payload,
+        )
+
+    async def list_campaigns(self) -> dict[str, Any]:
+        """List campaigns under the configured ad account.
+
+        Read-only. Useful for smoke tests and for agents that need to know what
+        already exists before planning a new campaign.
+        """
+        return await self._request(
+            "GET",
+            f"/adAccounts/{self.config.ad_account_id}/adCampaigns",
+            params={"q": "search"},
+        )

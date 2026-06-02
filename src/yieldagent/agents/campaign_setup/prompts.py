@@ -12,6 +12,8 @@ flight dates, audience, and creatives. If a field is not specified, leave it nul
 empty rather than inventing values. Convert currency symbols to ISO codes (e.g. "$" -> "USD").
 Convert dates to ISO 8601. Use lowercase 'meta' for Facebook/Instagram, 'google' for
 Google Ads, 'tiktok' for TikTok.
+If a creative cites the URN of an already-published post (e.g. 'urn:li:share:123' or
+'urn:li:ugcPost:123'), copy it verbatim into that creative's existing_post_urn field.
 """
 
 PLAN_CAMPAIGN_SYSTEM = """\
@@ -28,4 +30,5 @@ Rules:
 - Carry the Brief's audience through to the LineItem's Targeting unchanged unless the
   Brief specifies sub-audience splits.
 - Use the Brief's notes section to inform naming (e.g. "Midnight Brew Launch — June").
+- Preserve each creative's existing_post_urn unchanged when the Brief sets it.
 """
