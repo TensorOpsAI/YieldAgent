@@ -166,12 +166,16 @@ def line_item_payload(
     }
 
 
-def creative_content(creative: CreativeAsset) -> dict[str, Any]:
-    """Build a minimal Sponsored Content `content` block.
+def post_article_content(creative: CreativeAsset) -> dict[str, Any]:
+    """Build the `article` block for a Posts API dark post.
 
-    Image/video uploads are out of scope for the first slice — the agent will
-    pass `image_url`/`video_url` references; production use will need to upload
-    these assets via the `/assets` endpoint and reference the returned URNs.
+    A Creative can't hold inline copy — it references a Post. We model each ad as
+    an article post pointing at the landing URL. The Posts API does *not* scrape
+    the URL, so we set title/description explicitly.
+
+    Thumbnail is intentionally omitted: it must be an `urn:li:image:{id}` from the
+    Images API, not a plain URL. Uploading creative imagery is a follow-up; until
+    then posts render with LinkedIn's default link preview.
     """
     article: dict[str, Any] = {
         "source": creative.landing_url or "https://example.com",
@@ -180,17 +184,17 @@ def creative_content(creative: CreativeAsset) -> dict[str, Any]:
         article["title"] = creative.headline
     if creative.description:
         article["description"] = creative.description
-    if creative.image_url:
-        article["thumbnail"] = creative.image_url
+    return article
 
-    content: dict[str, Any] = {"article": article}
-    if creative.primary_text:
-        content["commentary"] = creative.primary_text
-    if creative.call_to_action:
-        content["callToAction"] = {
-            "label": creative.call_to_action.upper().replace(" ", "_")
-        }
-    return content
+
+def post_commentary(creative: CreativeAsset) -> str:
+    """The text shown above the post. Falls back through primary_text → headline → name."""
+    return creative.primary_text or creative.headline or creative.name
+
+
+def creative_content_reference(post_urn: str) -> dict[str, Any]:
+    """Wrap a Post URN as a Creative `content` reference."""
+    return {"reference": post_urn}
 
 
 __all__ = [
@@ -200,9 +204,11 @@ __all__ = [
     "audience_to_targeting",
     "campaign_objective",
     "campaign_run_schedule",
-    "creative_content",
+    "creative_content_reference",
     "flight_to_run_schedule",
     "line_item_locale",
     "line_item_payload",
     "money_to_linkedin_amount",
+    "post_article_content",
+    "post_commentary",
 ]

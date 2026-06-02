@@ -15,7 +15,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from yieldagent.integrations.linkedin.client import LinkedInClient
+from yieldagent.integrations.linkedin.client import LinkedInClient, LinkedInError
 from yieldagent.integrations.linkedin.config import LinkedInConfig
 
 _AD_ACCOUNT_ID = "537690018"
@@ -97,6 +97,64 @@ async def test_create_creative_uses_account_scoped_path(recorded_client) -> None
     assert request.url.path == f"/rest/adAccounts/{_AD_ACCOUNT_ID}/creatives"
 
 
+async def test_create_creative_omits_account_and_uses_intended_status(recorded_client) -> None:
+    """The Creatives API rejects a `account` field (read-only) and requires
+    `intendedStatus` (not `status`). See the 422 errors:
+    "/account :: ReadOnly field present", "/status :: unrecognized field",
+    "/intendedStatus :: field is required".
+    """
+    import json
+
+    client, recorder = recorded_client
+    await client.create_creative(
+        campaign_urn="urn:li:sponsoredCampaign:1",
+        content={"reference": "urn:li:share:1"},
+    )
+    body = json.loads(recorder.requests[0].read())
+    assert "account" not in body
+    assert "status" not in body
+    assert body["intendedStatus"] == "DRAFT"
+    assert body["campaign"] == "urn:li:sponsoredCampaign:1"
+    assert body["content"] == {"reference": "urn:li:share:1"}
+
+
+async def test_create_creative_refuses_active_intended_status(recorded_client) -> None:
+    client, _ = recorded_client
+    with pytest.raises(LinkedInError):
+        await client.create_creative(
+            campaign_urn="urn:li:sponsoredCampaign:1",
+            content={"reference": "urn:li:share:1"},
+            intended_status="ACTIVE",
+        )
+
+
+async def test_create_post_uses_posts_endpoint_as_dark_post(recorded_client) -> None:
+    """Creatives must reference a real Post. We create it as a dark (DSC) post:
+    org author, feedDistribution NONE, lifecycleState PUBLISHED, and an adContext
+    tying it to the sponsored account.
+    """
+    import json
+
+    client, recorder = recorded_client
+    await client.create_post(
+        author_urn="urn:li:organization:80050982",
+        commentary="How Northwind migrated to Lattice Cloud.",
+        article={"source": "https://lattice.example/cloud", "title": "We replaced our warehouse"},
+        dsc_ad_account_urn=f"urn:li:sponsoredAccount:{_AD_ACCOUNT_ID}",
+    )
+    request = recorder.requests[0]
+    assert request.method == "POST"
+    assert request.url.path == "/rest/posts"
+    body = json.loads(request.read())
+    assert body["author"] == "urn:li:organization:80050982"
+    assert body["commentary"].startswith("How Northwind")
+    assert body["visibility"] == "PUBLIC"
+    assert body["lifecycleState"] == "PUBLISHED"
+    assert body["distribution"]["feedDistribution"] == "NONE"
+    assert body["content"]["article"]["source"] == "https://lattice.example/cloud"
+    assert body["adContext"]["dscAdAccount"] == f"urn:li:sponsoredAccount:{_AD_ACCOUNT_ID}"
+
+
 async def test_get_ad_account_path_unchanged(recorded_client) -> None:
     """Reads were already account-scoped — make sure we don't accidentally regress."""
     client, recorder = recorded_client
@@ -135,7 +193,10 @@ async def test_create_campaign_includes_offsite_and_political_defaults(recorded_
     import json
     body = json.loads(payload)
     assert body["offsiteDeliveryEnabled"] is False
-    assert body["politicalIntent"] is False
+    # politicalIntent is a STRING enum (POLITICAL | NOT_POLITICAL | NOT_DECLARED),
+    # NOT a boolean. LinkedIn rejects a bool with
+    # "enum type is not backed by a String".
+    assert body["politicalIntent"] == "NOT_POLITICAL"
 
 
 async def test_create_campaign_offsite_and_political_overrideable(recorded_client) -> None:
@@ -150,13 +211,30 @@ async def test_create_campaign_offsite_and_political_overrideable(recorded_clien
         targeting_criteria={"include": {"and": []}},
         locale={"country": "US", "language": "en"},
         offsite_delivery_enabled=True,
-        political_intent=True,
+        political_intent="POLITICAL",
     )
     payload = recorder.requests[0].read()
     import json
     body = json.loads(payload)
     assert body["offsiteDeliveryEnabled"] is True
-    assert body["politicalIntent"] is True
+    assert body["politicalIntent"] == "POLITICAL"
+
+
+async def test_create_campaign_rejects_invalid_political_intent(recorded_client) -> None:
+    """Guard against passing a value LinkedIn's enum doesn't accept."""
+    client, _ = recorded_client
+    with pytest.raises(ValueError, match="political_intent"):
+        await client.create_campaign(
+            campaign_group_urn="urn:li:sponsoredCampaignGroup:1",
+            name="smoke",
+            objective_type="WEBSITE_VISITS",
+            campaign_type="SPONSORED_UPDATES",
+            total_budget={"amount": "10", "currencyCode": "EUR"},
+            run_schedule={"start": 1, "end": 2},
+            targeting_criteria={"include": {"and": []}},
+            locale={"country": "US", "language": "en"},
+            political_intent="MAYBE",
+        )
 
 
 async def test_required_headers_present(recorded_client) -> None:

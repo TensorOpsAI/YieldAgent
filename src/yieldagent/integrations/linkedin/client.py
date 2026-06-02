@@ -20,6 +20,9 @@ from .config import LinkedInConfig
 
 _BASE_URL = "https://api.linkedin.com/rest"
 _FORBIDDEN_STATUSES = {"ACTIVE", "COMPLETED"}
+# LinkedIn's politicalIntent is a String enum, not a boolean. Sending a bool
+# fails with "enum type is not backed by a String".
+_POLITICAL_INTENT_VALUES = {"POLITICAL", "NOT_POLITICAL", "NOT_DECLARED"}
 
 
 class LinkedInError(RuntimeError):
@@ -169,10 +172,15 @@ class LinkedInClient:
         cost_type: str = "CPC",
         status: str | None = None,
         offsite_delivery_enabled: bool = False,
-        political_intent: bool = False,
+        political_intent: str = "NOT_POLITICAL",
     ) -> dict[str, Any]:
         if (daily_budget is None) == (total_budget is None):
             raise ValueError("Provide exactly one of daily_budget or total_budget")
+        if political_intent not in _POLITICAL_INTENT_VALUES:
+            raise ValueError(
+                f"political_intent must be one of {sorted(_POLITICAL_INTENT_VALUES)}, "
+                f"got {political_intent!r}"
+            )
         payload: dict[str, Any] = {
             "account": self.config.account_urn,
             "campaignGroup": campaign_group_urn,
@@ -201,18 +209,59 @@ class LinkedInClient:
             json=payload,
         )
 
+    async def create_post(
+        self,
+        *,
+        author_urn: str,
+        commentary: str,
+        article: dict[str, Any] | None = None,
+        dsc_ad_account_urn: str | None = None,
+        dsc_ad_type: str = "STANDARD",
+        feed_distribution: str = "NONE",
+    ) -> dict[str, Any]:
+        """Create a Post via the (non-account-scoped) Posts API.
+
+        A LinkedIn Creative cannot carry inline copy — it must reference a real
+        Post (share / ugcPost). For ads we create a *dark post* (Direct Sponsored
+        Content): authored by the advertiser org, `feedDistribution=NONE` so it
+        never shows on the page's organic feed, and an `adContext` tying it to the
+        sponsored account. Returns the new post URN under `id` (from `x-restli-id`).
+        """
+        payload: dict[str, Any] = {
+            "author": author_urn,
+            "commentary": commentary,
+            "visibility": "PUBLIC",
+            "distribution": {
+                "feedDistribution": feed_distribution,
+                "targetEntities": [],
+                "thirdPartyDistributionChannels": [],
+            },
+            "lifecycleState": "PUBLISHED",
+            "isReshareDisabledByAuthor": False,
+        }
+        if article is not None:
+            payload["content"] = {"article": article}
+        if dsc_ad_account_urn is not None:
+            payload["adContext"] = {
+                "dscAdAccount": dsc_ad_account_urn,
+                "dscAdType": dsc_ad_type,
+            }
+        return await self._request("POST", "/posts", json=payload)
+
     async def create_creative(
         self,
         *,
         campaign_urn: str,
         content: dict[str, Any],
-        status: str | None = None,
+        intended_status: str | None = None,
     ) -> dict[str, Any]:
+        # The Creatives API rejects `account` (read-only) and uses `intendedStatus`
+        # (an enum) rather than `status`. `content` must reference a Post URN, e.g.
+        # {"reference": "urn:li:share:..."}.
         payload: dict[str, Any] = {
-            "account": self.config.account_urn,
             "campaign": campaign_urn,
             "content": content,
-            "status": self._check_status(status),
+            "intendedStatus": self._check_status(intended_status),
         }
         return await self._request(
             "POST",

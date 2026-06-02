@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from datetime import date
 
-from yieldagent.domain import Flight
+from yieldagent.domain import CreativeAsset, Flight
 from yieldagent.integrations.linkedin.mapping import (
     campaign_run_schedule,
+    creative_content_reference,
     flight_to_run_schedule,
+    post_article_content,
 )
 
 
@@ -46,3 +48,29 @@ def test_campaign_run_schedule_single_flight_is_passthrough() -> None:
     flight = Flight(start_date=date(2026, 7, 1), end_date=date(2026, 7, 31))
     out = campaign_run_schedule([flight])
     assert out == flight_to_run_schedule(flight)
+
+
+def test_post_article_content_maps_landing_headline_description() -> None:
+    creative = CreativeAsset(
+        name="Engineering-leader story",
+        headline="We replaced our warehouse in 30 days.",
+        primary_text="How Northwind migrated to Lattice Cloud.",
+        description="A migration story.",
+        landing_url="https://lattice.example/cloud",
+    )
+    article = post_article_content(creative)
+    assert article["source"] == "https://lattice.example/cloud"
+    assert article["title"] == "We replaced our warehouse in 30 days."
+    assert article["description"] == "A migration story."
+    # image_url is a plain URL, not an urn:li:image — thumbnail needs the Images
+    # API, so it must NOT be set here.
+    assert "thumbnail" not in article
+
+
+def test_post_article_content_defaults_source_when_no_landing_url() -> None:
+    article = post_article_content(CreativeAsset(name="x"))
+    assert article["source"].startswith("http")
+
+
+def test_creative_content_reference_wraps_post_urn() -> None:
+    assert creative_content_reference("urn:li:share:123") == {"reference": "urn:li:share:123"}
