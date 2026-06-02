@@ -13,6 +13,7 @@ id, or `YIELDAGENT_ALLOW_LIVE=1` must be set.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -268,6 +269,33 @@ class LinkedInClient:
             f"/adAccounts/{self.config.ad_account_id}/creatives",
             json=payload,
         )
+
+    async def delete_campaign_group(self, campaign_group_id: str | int) -> None:
+        """Delete a Campaign Group by numeric id. Used to roll back orphaned drafts."""
+        await self._request(
+            "DELETE",
+            f"/adAccounts/{self.config.ad_account_id}/adCampaignGroups/{campaign_group_id}",
+        )
+
+    async def delete_campaign(self, campaign_id: str | int) -> None:
+        """Delete a Campaign by numeric id. Used to roll back orphaned drafts."""
+        await self._request(
+            "DELETE",
+            f"/adAccounts/{self.config.ad_account_id}/adCampaigns/{campaign_id}",
+        )
+
+    async def delete_creative(self, creative_urn: str) -> None:
+        """Delete a Creative. The Creatives API keys on the URL-encoded URN."""
+        key = quote(str(creative_urn), safe="")
+        await self._request(
+            "DELETE",
+            f"/adAccounts/{self.config.ad_account_id}/creatives/{key}",
+        )
+
+    async def delete_post(self, post_urn: str) -> None:
+        """Delete a Post (e.g. a minted dark post). The Posts API keys on the URL-encoded URN."""
+        key = quote(str(post_urn), safe="")
+        await self._request("DELETE", f"/posts/{key}")
 
     async def list_campaigns(self) -> dict[str, Any]:
         """List campaigns under the configured ad account.

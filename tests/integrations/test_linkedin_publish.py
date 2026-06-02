@@ -9,6 +9,7 @@ path each ad takes without standing up a real MCP server or hitting LinkedIn.
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 import pytest
 
@@ -41,12 +42,22 @@ def _config() -> LinkedInConfig:
 
 
 class _FakeClient:
-    """Records create_post / create_creative calls; returns plausible ids."""
+    """Records create_post / create_creative calls; returns plausible ids.
+
+    Set `fail_creative_on` to a 1-based call index to make that create_creative
+    raise, exercising the rollback path. Deletes are recorded, not executed.
+    """
 
     def __init__(self, config: LinkedInConfig):
         self.config = config
         self.create_post_calls: list[dict] = []
         self.create_creative_calls: list[dict] = []
+        self.fail_creative_on: int | None = None
+        self.deleted_creatives: list[str] = []
+        self.deleted_campaigns: list[str] = []
+        self.deleted_groups: list[str] = []
+        self.deleted_posts: list[str] = []
+        self._creative_seq = 0
 
     async def __aenter__(self) -> _FakeClient:
         return self
@@ -71,16 +82,32 @@ class _FakeClient:
         return {"id": "urn:li:share:MINTED"}
 
     async def create_creative(self, **kw) -> dict:
+        self._creative_seq += 1
         self.create_creative_calls.append(kw)
-        return {"id": "333"}
+        if self.fail_creative_on == self._creative_seq:
+            raise RuntimeError("UGC_RESHARE_CANNOT_BE_SPONSORED")
+        return {"id": f"urn:li:sponsoredCreative:33{self._creative_seq}"}
+
+    async def delete_creative(self, creative_urn: str) -> None:
+        self.deleted_creatives.append(creative_urn)
+
+    async def delete_campaign(self, campaign_id) -> None:
+        self.deleted_campaigns.append(campaign_id)
+
+    async def delete_campaign_group(self, campaign_group_id) -> None:
+        self.deleted_groups.append(campaign_group_id)
+
+    async def delete_post(self, post_urn: str) -> None:
+        self.deleted_posts.append(post_urn)
 
 
 @pytest.fixture
 def patched(monkeypatch):
-    captured: dict[str, _FakeClient] = {}
+    captured: dict[str, Any] = {}
 
     def _factory(config: LinkedInConfig) -> _FakeClient:
         client = _FakeClient(config)
+        client.fail_creative_on = captured.get("fail_creative_on")
         captured["client"] = client
         return client
 
@@ -139,3 +166,37 @@ async def test_mixed_ads_only_mint_for_missing_urn(patched) -> None:
     assert len(client.create_post_calls) == 1
     refs = {c["content"]["reference"] for c in client.create_creative_calls}
     assert refs == {"urn:li:share:HANDMADE", "urn:li:share:MINTED"}
+
+
+async def test_creative_failure_rolls_back_orphans(patched) -> None:
+    # Two existing-post ads; the second creative fails. The group, campaign, and
+    # the first (already-created) creative must all be torn down — no orphans.
+    patched["fail_creative_on"] = 2
+    campaign = _campaign(
+        CreativeAsset(name="ok", existing_post_urn="urn:li:share:A"),
+        CreativeAsset(name="boom", existing_post_urn="urn:li:share:B"),
+    )
+    with pytest.raises(RuntimeError, match="UGC_RESHARE_CANNOT_BE_SPONSORED"):
+        await srv.publish_draft_campaign(campaign)
+
+    client = patched["client"]
+    assert client.deleted_creatives == ["urn:li:sponsoredCreative:331"]
+    assert client.deleted_campaigns == ["222"]
+    assert client.deleted_groups == ["111"]
+    # Existing-post ads never mint posts, so nothing to delete there.
+    assert client.deleted_posts == []
+
+
+async def test_minted_post_is_rolled_back_on_creative_failure(patched) -> None:
+    # A dark-post ad: the post is minted, then the creative fails. The minted
+    # post must be cleaned up alongside the campaign and group.
+    patched["fail_creative_on"] = 1
+    campaign = _campaign(CreativeAsset(name="fresh", landing_url="https://example.com"))
+    with pytest.raises(RuntimeError, match="UGC_RESHARE_CANNOT_BE_SPONSORED"):
+        await srv.publish_draft_campaign(campaign)
+
+    client = patched["client"]
+    assert client.deleted_posts == ["urn:li:share:MINTED"]
+    assert client.deleted_campaigns == ["222"]
+    assert client.deleted_groups == ["111"]
+    assert client.deleted_creatives == []
