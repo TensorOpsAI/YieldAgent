@@ -3,7 +3,7 @@
 Run with: `python -m yieldagent.integrations.linkedin.server`
 
 Required env: LINKEDIN_ACCESS_TOKEN, LINKEDIN_AD_ACCOUNT_ID
-Optional env: LINKEDIN_API_VERSION (default 202405),
+Optional env: LINKEDIN_API_VERSION (default 202605),
               LINKEDIN_ALLOWED_AD_ACCOUNTS (comma-separated allowlist),
               YIELDAGENT_ALLOW_LIVE (set to 1 to bypass the allowlist)
 """
@@ -16,6 +16,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from yieldagent.domain import Campaign
+from yieldagent.env import load_dotenv
 
 from .client import LinkedInClient
 from .config import LinkedInConfig
@@ -23,10 +24,13 @@ from .mapping import (
     DEFAULT_CAMPAIGN_TYPE,
     audience_to_targeting,
     campaign_objective,
-    creative_content,
+    campaign_run_schedule,
+    creative_content_reference,
     flight_to_run_schedule,
     line_item_locale,
     money_to_linkedin_amount,
+    post_article_content,
+    post_commentary,
 )
 
 mcp = FastMCP("yieldagent-linkedin")
@@ -136,12 +140,31 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
         group = await client.create_campaign_group(
             name=parsed.name,
             total_budget=money_to_linkedin_amount(group_amount, group_currency),
+            # LinkedIn now requires runSchedule on the group; span all line items.
+            run_schedule=campaign_run_schedule([li.flight for li in parsed.line_items]),
         )
         group_urn = f"urn:li:sponsoredCampaignGroup:{group['id']}"
         result["campaign_id"] = group["id"]
         result["campaign_group_urn"] = group_urn
 
         objective_type = campaign_objective(parsed)
+
+        # Creatives reference a real Post. Ads carrying `existing_post_urn` reuse a
+        # hand-published post; the rest mint a new Direct Sponsored Content post,
+        # which must be authored by a Company Page. Only resolve/require the org URN
+        # when at least one ad needs a fresh post.
+        org_urn = config.organization_urn
+        if any(not ad.creative.existing_post_urn for ad in parsed.ads):
+            if org_urn is None:
+                account = await client.get_ad_account()
+                org_urn = account.get("reference")
+            if not org_urn or not str(org_urn).startswith("urn:li:organization:"):
+                raise ValueError(
+                    "No organization (Company Page) is associated with this ad account, "
+                    "so Direct Sponsored Content posts cannot be authored for creatives. "
+                    "Set LINKEDIN_ORGANIZATION_URN, or use an ad account linked to a page, "
+                    "or set `existing_post_urn` on every ad to reuse hand-published posts."
+                )
 
         line_item_urns: dict[str, str] = {}
         unresolved_by_li: dict[str, dict[str, Any]] = {}
@@ -172,12 +195,28 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(
                     f"Ad {ad.name!r} references unknown line_item_name {ad.line_item_name!r}"
                 )
+            # Either reference a hand-published post, or mint a dark post (DSC).
+            if ad.creative.existing_post_urn:
+                post_urn = ad.creative.existing_post_urn
+            else:
+                post = await client.create_post(
+                    author_urn=org_urn,
+                    commentary=post_commentary(ad.creative),
+                    article=post_article_content(ad.creative),
+                    dsc_ad_account_urn=config.account_urn,
+                )
+                post_urn = post.get("id")
             created = await client.create_creative(
                 campaign_urn=campaign_urn,
-                content=creative_content(ad.creative),
+                content=creative_content_reference(post_urn),
             )
             result["ads"].append(
-                {"name": ad.name, "id": created.get("id"), "campaign_urn": campaign_urn}
+                {
+                    "name": ad.name,
+                    "id": created.get("id"),
+                    "campaign_urn": campaign_urn,
+                    "post_urn": post_urn,
+                }
             )
 
         if unresolved_by_li:
@@ -192,6 +231,7 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> None:
+    load_dotenv()
     asyncio.run(mcp.run_stdio_async())
 
 

@@ -13,9 +13,13 @@ class LinkedInConfig:
     api_version: str
     allow_live: bool
     allowed_accounts: frozenset[str] = field(default_factory=frozenset)
+    # Organization (Company Page) that authors the Direct Sponsored Content posts
+    # backing each creative. Optional: if unset, the server resolves it from the
+    # ad account's `reference` field at publish time.
+    organization_urn: str | None = None
 
     @classmethod
-    def from_env(cls) -> "LinkedInConfig":
+    def from_env(cls) -> LinkedInConfig:
         token = os.environ.get("LINKEDIN_ACCESS_TOKEN")
         account = os.environ.get("LINKEDIN_AD_ACCOUNT_ID")
         if not token:
@@ -31,12 +35,19 @@ class LinkedInConfig:
             )
         raw_allow = os.environ.get("LINKEDIN_ALLOWED_AD_ACCOUNTS", "")
         allowed = frozenset(a.strip() for a in raw_allow.split(",") if a.strip())
+        # Accept a bare org id or a full URN.
+        org = os.environ.get("LINKEDIN_ORGANIZATION_URN") or os.environ.get(
+            "LINKEDIN_ORGANIZATION_ID"
+        )
+        if org and not org.startswith("urn:li:organization:"):
+            org = f"urn:li:organization:{org.strip()}"
         return cls(
             access_token=token,
             ad_account_id=account,
-            api_version=os.environ.get("LINKEDIN_API_VERSION", "202405"),
+            api_version=os.environ.get("LINKEDIN_API_VERSION", "202605"),
             allow_live=os.environ.get("YIELDAGENT_ALLOW_LIVE") == "1",
             allowed_accounts=allowed,
+            organization_urn=org,
         )
 
     @property
