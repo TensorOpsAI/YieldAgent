@@ -14,12 +14,11 @@ from .prompts import PARSE_BRIEF_SYSTEM, PLAN_CAMPAIGN_SYSTEM
 from .state import AgentState, AuditEntry
 
 # Provider is inferred from the model name by init_chat_model:
+#   gemini-*         -> google_genai (requires GOOGLE_API_KEY)
 #   claude-*         -> anthropic    (requires ANTHROPIC_API_KEY)
 #   gpt-*            -> openai       (requires OPENAI_API_KEY)
-# A bare gemini-* is rewritten to google_genai:gemini-* by _resolve_model_name
-# (Google AI Studio, requires GOOGLE_API_KEY) — see that function for why.
 # Override at the CLI via --model, or pass an explicit "provider:model" string.
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.1-pro-preview"
 
 
 def _resolve_model_name(model_name: str) -> str:
