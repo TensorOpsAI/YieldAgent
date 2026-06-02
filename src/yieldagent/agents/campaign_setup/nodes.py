@@ -18,7 +18,7 @@ from .state import AgentState, AuditEntry
 #   claude-*         -> anthropic    (requires ANTHROPIC_API_KEY)
 #   gpt-*            -> openai       (requires OPENAI_API_KEY)
 # Override at the CLI via --model, or pass an explicit "provider:model" string.
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.1-pro-preview"
 
 
 def _resolve_model_name(model_name: str) -> str:
