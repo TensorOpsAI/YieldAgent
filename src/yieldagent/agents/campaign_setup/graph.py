@@ -15,7 +15,10 @@ import sys
 from typing import Awaitable, Callable
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
+
+from yieldagent import domain
 
 from .nodes import (
     DEFAULT_MODEL,
@@ -28,6 +31,19 @@ from .nodes import (
 from .state import AgentState
 
 GetMcpTool = Callable[[str], Awaitable[object]]
+
+
+def _default_checkpointer() -> MemorySaver:
+    """In-memory checkpointer that knows how to (de)serialize our domain models.
+
+    The graph state holds `Brief`/`Campaign` Pydantic models. Without an explicit
+    allowlist langgraph warns on every checkpoint load that these types are
+    "unregistered" (and will block them in a future version). Registering the
+    domain types silences the warning and pins the set of types we trust to
+    reconstruct from a checkpoint.
+    """
+    allowed = [getattr(domain, name) for name in domain.__all__]
+    return MemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=allowed))
 
 
 def _default_meta_mcp_tool_loader() -> GetMcpTool:
@@ -83,4 +99,4 @@ def build_graph(
     )
     builder.add_edge("publish_draft", END)
 
-    return builder.compile(checkpointer=checkpointer or MemorySaver())
+    return builder.compile(checkpointer=checkpointer or _default_checkpointer())
