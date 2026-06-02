@@ -153,6 +153,9 @@ async def test_create_post_uses_posts_endpoint_as_dark_post(recorded_client) -> 
     assert body["distribution"]["feedDistribution"] == "NONE"
     assert body["content"]["article"]["source"] == "https://lattice.example/cloud"
     assert body["adContext"]["dscAdAccount"] == f"urn:li:sponsoredAccount:{_AD_ACCOUNT_ID}"
+    # dscAdType is read-only — sending it on create returns 422
+    # "ReadOnly field present in a create request".
+    assert "dscAdType" not in body["adContext"]
 
 
 async def test_get_ad_account_path_unchanged(recorded_client) -> None:

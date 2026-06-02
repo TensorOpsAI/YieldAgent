@@ -216,7 +216,6 @@ class LinkedInClient:
         commentary: str,
         article: dict[str, Any] | None = None,
         dsc_ad_account_urn: str | None = None,
-        dsc_ad_type: str = "STANDARD",
         feed_distribution: str = "NONE",
     ) -> dict[str, Any]:
         """Create a Post via the (non-account-scoped) Posts API.
@@ -226,6 +225,10 @@ class LinkedInClient:
         Content): authored by the advertiser org, `feedDistribution=NONE` so it
         never shows on the page's organic feed, and an `adContext` tying it to the
         sponsored account. Returns the new post URN under `id` (from `x-restli-id`).
+
+        `feedDistribution=NONE` makes LinkedIn treat the post as DSC, which *requires*
+        `adContext.dscAdAccount`. `dscAdType` must NOT be sent — it is read-only and
+        a 422 ("ReadOnly field present in a create request") results otherwise.
         """
         payload: dict[str, Any] = {
             "author": author_urn,
@@ -242,10 +245,7 @@ class LinkedInClient:
         if article is not None:
             payload["content"] = {"article": article}
         if dsc_ad_account_urn is not None:
-            payload["adContext"] = {
-                "dscAdAccount": dsc_ad_account_urn,
-                "dscAdType": dsc_ad_type,
-            }
+            payload["adContext"] = {"dscAdAccount": dsc_ad_account_urn}
         return await self._request("POST", "/posts", json=payload)
 
     async def create_creative(

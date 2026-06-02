@@ -92,6 +92,14 @@ class CreativeAsset(BaseModel):
     video_url: str | None = None
     call_to_action: str | None = None
     landing_url: str | None = None
+    existing_post_urn: str | None = Field(
+        default=None,
+        description=(
+            "URN of an already-published LinkedIn post/share (e.g. 'urn:li:share:123'). "
+            "When set, the ad references this post directly instead of creating a new "
+            "Direct Sponsored Content post — use it to advertise content published by hand."
+        ),
+    )
 
 
 class Brief(BaseModel):

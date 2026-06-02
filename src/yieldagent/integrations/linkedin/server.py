@@ -149,18 +149,22 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
 
         objective_type = campaign_objective(parsed)
 
-        # Creatives must reference a real Post authored by a Company Page. Resolve
-        # the org URN from config, else from the ad account's `reference` field.
+        # Creatives reference a real Post. Ads carrying `existing_post_urn` reuse a
+        # hand-published post; the rest mint a new Direct Sponsored Content post,
+        # which must be authored by a Company Page. Only resolve/require the org URN
+        # when at least one ad needs a fresh post.
         org_urn = config.organization_urn
-        if org_urn is None:
-            account = await client.get_ad_account()
-            org_urn = account.get("reference")
-        if not org_urn or not str(org_urn).startswith("urn:li:organization:"):
-            raise ValueError(
-                "No organization (Company Page) is associated with this ad account, "
-                "so Direct Sponsored Content posts cannot be authored for creatives. "
-                "Set LINKEDIN_ORGANIZATION_URN, or use an ad account linked to a page."
-            )
+        if any(not ad.creative.existing_post_urn for ad in parsed.ads):
+            if org_urn is None:
+                account = await client.get_ad_account()
+                org_urn = account.get("reference")
+            if not org_urn or not str(org_urn).startswith("urn:li:organization:"):
+                raise ValueError(
+                    "No organization (Company Page) is associated with this ad account, "
+                    "so Direct Sponsored Content posts cannot be authored for creatives. "
+                    "Set LINKEDIN_ORGANIZATION_URN, or use an ad account linked to a page, "
+                    "or set `existing_post_urn` on every ad to reuse hand-published posts."
+                )
 
         line_item_urns: dict[str, str] = {}
         unresolved_by_li: dict[str, dict[str, Any]] = {}
@@ -191,14 +195,17 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(
                     f"Ad {ad.name!r} references unknown line_item_name {ad.line_item_name!r}"
                 )
-            # 1) Create the backing dark post (DSC), 2) reference it in the creative.
-            post = await client.create_post(
-                author_urn=org_urn,
-                commentary=post_commentary(ad.creative),
-                article=post_article_content(ad.creative),
-                dsc_ad_account_urn=config.account_urn,
-            )
-            post_urn = post.get("id")
+            # Either reference a hand-published post, or mint a dark post (DSC).
+            if ad.creative.existing_post_urn:
+                post_urn = ad.creative.existing_post_urn
+            else:
+                post = await client.create_post(
+                    author_urn=org_urn,
+                    commentary=post_commentary(ad.creative),
+                    article=post_article_content(ad.creative),
+                    dsc_ad_account_urn=config.account_urn,
+                )
+                post_urn = post.get("id")
             created = await client.create_creative(
                 campaign_urn=campaign_urn,
                 content=creative_content_reference(post_urn),
