@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain_anthropic import ChatAnthropic
+from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import interrupt
 
@@ -13,7 +13,29 @@ from yieldagent.domain import Brief, Campaign, CampaignStatus
 from .prompts import PARSE_BRIEF_SYSTEM, PLAN_CAMPAIGN_SYSTEM
 from .state import AgentState, AuditEntry
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
+# Provider is inferred from the model name by init_chat_model:
+#   claude-*         -> anthropic    (requires ANTHROPIC_API_KEY)
+#   gpt-*            -> openai       (requires OPENAI_API_KEY)
+# A bare gemini-* is rewritten to google_genai:gemini-* by _resolve_model_name
+# (Google AI Studio, requires GOOGLE_API_KEY) — see that function for why.
+# Override at the CLI via --model, or pass an explicit "provider:model" string.
+DEFAULT_MODEL = "gemini-2.5-flash"
+
+
+def _resolve_model_name(model_name: str) -> str:
+    """Disambiguate bare `gemini-*` to Google AI Studio.
+
+    LangChain's init_chat_model routes bare `gemini-*` to Vertex AI by default,
+    which needs full GCP setup. Users with just a `GOOGLE_API_KEY` want the
+    Gemini API (Google AI Studio) — the `google_genai` provider — so we make
+    that choice explicit. Callers who want Vertex can still pass
+    `google_vertexai:gemini-...`.
+    """
+    if ":" in model_name:
+        return model_name
+    if model_name.startswith("gemini-"):
+        return f"google_genai:{model_name}"
+    return model_name
 
 
 def _audit(state: AgentState, entry: AuditEntry) -> list[AuditEntry]:
@@ -21,7 +43,7 @@ def _audit(state: AgentState, entry: AuditEntry) -> list[AuditEntry]:
 
 
 def make_parse_brief_node(model_name: str = DEFAULT_MODEL):
-    model = ChatAnthropic(model_name=model_name).with_structured_output(Brief)
+    model = init_chat_model(_resolve_model_name(model_name)).with_structured_output(Brief)
 
     async def parse_brief(state: AgentState) -> dict[str, Any]:
         brief = await model.ainvoke(
@@ -46,7 +68,7 @@ def make_parse_brief_node(model_name: str = DEFAULT_MODEL):
 
 
 def make_plan_campaign_node(model_name: str = DEFAULT_MODEL):
-    model = ChatAnthropic(model_name=model_name).with_structured_output(Campaign)
+    model = init_chat_model(_resolve_model_name(model_name)).with_structured_output(Campaign)
 
     async def plan_campaign(state: AgentState) -> dict[str, Any]:
         brief = state["brief"]
