@@ -11,11 +11,11 @@ Generate qualified inbound leads for the Lattice Cloud free-tier signup at
 `lattice.example/cloud`. Hand-off to SDR queue.
 
 ## KPIs
-- **Primary:** Cost per Marketing Qualified Lead (MQL) ≤ $120
+- **Primary:** Cost per Marketing Qualified Lead (MQL) ≤ €110
 - **Secondary:** CTR ≥ 0.6% on Sponsored Content
 
 ## Budget
-$40,000 USD total, across the flight.
+€36,000 EUR total, across the flight.
 
 ## Flight
 2026-07-06 → 2026-08-31 (≈8 weeks).
@@ -57,6 +57,10 @@ Three creatives in market at launch:
 LinkedIn. Mirror flights to Google Search are scoped separately.
 
 ## Notes
+To advertise a post you published by hand on the Company Page, add a line like
+`Existing post: urn:li:share:7340000000000000000` under that creative — the agent
+will reference it directly instead of creating a new Direct Sponsored Content post.
+
 Hold the benchmark-report creative until week 3 so the engineering-leader story
 sets context first. Keep all initial drafts in **DRAFT** status on LinkedIn —
 nothing gets activated in Campaign Manager without sign-off from the demand-gen
