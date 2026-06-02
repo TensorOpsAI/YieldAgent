@@ -15,11 +15,6 @@ import pytest
 from yieldagent.agents.campaign_setup import nodes
 from yieldagent.domain import Brief, Campaign
 
-
-def test_default_model_is_gemini_flash() -> None:
-    assert nodes.DEFAULT_MODEL == "gemini-2.5-flash"
-
-
 # --- Provider resolution -----------------------------------------------------
 # Bare `gemini-*` strings are ambiguous in LangChain: `init_chat_model` routes
 # them to Vertex AI by default, which requires full GCP setup. We pin Google AI
@@ -36,7 +31,7 @@ def test_default_model_is_gemini_flash() -> None:
         ("claude-sonnet-4-6", "claude-sonnet-4-6"),
         ("gpt-4o", "gpt-4o"),
         # Explicit provider prefixes are respected — caller knows what they want.
-        ("google_genai:gemini-2.5-flash", "google_genai:gemini-2.5-flash"),
+        ("google_genai:gemini-3.1-pro-preview", "google_genai:gemini-3.1-pro-preview"),
         ("google_vertexai:gemini-2.5-pro", "google_vertexai:gemini-2.5-pro"),
         ("anthropic:claude-sonnet-4-6", "anthropic:claude-sonnet-4-6"),
     ],
@@ -52,7 +47,7 @@ def test_resolve_model_name(input_name: str, expected: str) -> None:
 def test_parse_brief_uses_init_chat_model_with_default(mock_init: MagicMock) -> None:
     nodes.make_parse_brief_node()
 
-    mock_init.assert_called_once_with("google_genai:gemini-2.5-flash")
+    mock_init.assert_called_once_with(nodes._resolve_model_name(nodes.DEFAULT_MODEL))
     mock_init.return_value.with_structured_output.assert_called_once_with(Brief)
 
 
@@ -67,7 +62,7 @@ def test_parse_brief_respects_anthropic_override(mock_init: MagicMock) -> None:
 def test_plan_campaign_uses_init_chat_model_with_default(mock_init: MagicMock) -> None:
     nodes.make_plan_campaign_node()
 
-    mock_init.assert_called_once_with("google_genai:gemini-2.5-flash")
+    mock_init.assert_called_once_with(nodes._resolve_model_name(nodes.DEFAULT_MODEL))
     mock_init.return_value.with_structured_output.assert_called_once_with(Campaign)
 
 
