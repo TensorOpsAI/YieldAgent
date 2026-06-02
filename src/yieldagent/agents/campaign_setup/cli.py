@@ -21,6 +21,8 @@ from uuid import uuid4
 
 from langgraph.types import Command
 
+from yieldagent.env import load_dotenv
+
 from .graph import build_graph
 from .nodes import DEFAULT_MODEL
 
@@ -100,6 +102,7 @@ async def _run(brief_path: Path, *, auto_approve: bool, dry_run: bool, model_nam
 
 
 def main() -> int:
+    load_dotenv()
     parser = argparse.ArgumentParser(prog="yieldagent-campaign-setup")
     parser.add_argument("brief", type=Path, help="Path to a markdown campaign brief")
     parser.add_argument(
@@ -111,7 +114,8 @@ def main() -> int:
         "--dry-run",
         action="store_true",
         help="Replace the Meta MCP server with a stub. No Meta credentials needed; "
-        "nothing is sent to Meta. Use this to try the agent end-to-end before wiring up real ad accounts.",
+        "nothing is sent to Meta. Use this to try the agent end-to-end before "
+        "wiring up real ad accounts.",
     )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Claude model name")
     args = parser.parse_args()

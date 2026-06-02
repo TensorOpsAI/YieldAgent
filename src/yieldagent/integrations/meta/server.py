@@ -14,14 +14,15 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from yieldagent.domain import Campaign
+from yieldagent.env import load_dotenv
 
 from .client import MetaClient
 from .config import MetaConfig
 from .mapping import (
+    audience_to_targeting,
     campaign_objective,
     creative_payload,
     flight_to_meta_times,
-    audience_to_targeting,
     to_minor_units,
 )
 
@@ -138,6 +139,7 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> None:
+    load_dotenv()
     asyncio.run(mcp.run_stdio_async())
 
 
