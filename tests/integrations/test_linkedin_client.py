@@ -114,6 +114,51 @@ async def test_list_campaigns_uses_account_scoped_path_with_search(recorded_clie
     assert request.url.params.get("q") == "search"
 
 
+async def test_create_campaign_includes_offsite_and_political_defaults(recorded_client) -> None:
+    """LinkedIn now requires offsiteDeliveryEnabled + politicalIntent on Campaign create.
+
+    Defaults must be safe: LinkedIn-only delivery (no Audience Network) and
+    non-political. Callers can override via kwargs.
+    """
+    client, recorder = recorded_client
+    await client.create_campaign(
+        campaign_group_urn="urn:li:sponsoredCampaignGroup:1",
+        name="smoke",
+        objective_type="WEBSITE_VISITS",
+        campaign_type="SPONSORED_UPDATES",
+        total_budget={"amount": "10", "currencyCode": "EUR"},
+        run_schedule={"start": 1, "end": 2},
+        targeting_criteria={"include": {"and": []}},
+        locale={"country": "US", "language": "en"},
+    )
+    payload = recorder.requests[0].read()
+    import json
+    body = json.loads(payload)
+    assert body["offsiteDeliveryEnabled"] is False
+    assert body["politicalIntent"] is False
+
+
+async def test_create_campaign_offsite_and_political_overrideable(recorded_client) -> None:
+    client, recorder = recorded_client
+    await client.create_campaign(
+        campaign_group_urn="urn:li:sponsoredCampaignGroup:1",
+        name="smoke",
+        objective_type="WEBSITE_VISITS",
+        campaign_type="SPONSORED_UPDATES",
+        total_budget={"amount": "10", "currencyCode": "EUR"},
+        run_schedule={"start": 1, "end": 2},
+        targeting_criteria={"include": {"and": []}},
+        locale={"country": "US", "language": "en"},
+        offsite_delivery_enabled=True,
+        political_intent=True,
+    )
+    payload = recorder.requests[0].read()
+    import json
+    body = json.loads(payload)
+    assert body["offsiteDeliveryEnabled"] is True
+    assert body["politicalIntent"] is True
+
+
 async def test_required_headers_present(recorded_client) -> None:
     """All writes must include the LinkedIn-Version + restli protocol headers."""
     client, recorder = recorded_client

@@ -168,6 +168,8 @@ class LinkedInClient:
         unit_cost: dict[str, str] | None = None,
         cost_type: str = "CPC",
         status: str | None = None,
+        offsite_delivery_enabled: bool = False,
+        political_intent: bool = False,
     ) -> dict[str, Any]:
         if (daily_budget is None) == (total_budget is None):
             raise ValueError("Provide exactly one of daily_budget or total_budget")
@@ -182,6 +184,10 @@ class LinkedInClient:
             "runSchedule": run_schedule,
             "targetingCriteria": targeting_criteria,
             "locale": locale,
+            # Both fields became required in current API versions. Safe defaults:
+            # LinkedIn-only delivery (no Audience Network) and non-political.
+            "offsiteDeliveryEnabled": offsite_delivery_enabled,
+            "politicalIntent": political_intent,
         }
         if daily_budget is not None:
             payload["dailyBudget"] = daily_budget
