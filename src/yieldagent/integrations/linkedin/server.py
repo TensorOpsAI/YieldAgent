@@ -22,7 +22,6 @@ from .client import LinkedInClient
 from .config import LinkedInConfig
 from .mapping import (
     DEFAULT_CAMPAIGN_TYPE,
-    audience_to_targeting,
     campaign_objective,
     campaign_run_schedule,
     creative_content_reference,
@@ -32,19 +31,13 @@ from .mapping import (
     post_article_content,
     post_commentary,
 )
+from .targeting import TargetingResolver
 
 mcp = FastMCP("yieldagent-linkedin")
 
 
 def _client() -> LinkedInClient:
     return LinkedInClient(LinkedInConfig.from_env())
-
-
-def _strip_unresolved(targeting: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Split the mapping's targeting payload into wire payload + unresolved B2B notes."""
-    wire = {k: v for k, v in targeting.items() if not k.startswith("_")}
-    unresolved = targeting.get("_unresolved_b2b", {})
-    return wire, unresolved
 
 
 class _Created:
@@ -218,12 +211,11 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
 
             line_item_urns: dict[str, str] = {}
             unresolved_by_li: dict[str, dict[str, Any]] = {}
+            resolver = TargetingResolver(client)
             for li in parsed.line_items:
-                targeting, unresolved = _strip_unresolved(
-                    audience_to_targeting(li.targeting.audience)
-                )
-                if unresolved:
-                    unresolved_by_li[li.name] = unresolved
+                resolved = await resolver.resolve(li.targeting.audience)
+                if resolved.unresolved:
+                    unresolved_by_li[li.name] = resolved.unresolved
                 run_schedule = flight_to_run_schedule(li.flight)
                 created_li = await client.create_campaign(
                     campaign_group_urn=group_urn,
@@ -232,7 +224,7 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
                     campaign_type=DEFAULT_CAMPAIGN_TYPE,
                     total_budget=money_to_linkedin_amount(li.budget.amount, li.budget.currency),
                     run_schedule=run_schedule,
-                    targeting_criteria=targeting,
+                    targeting_criteria=resolved.criteria,
                     locale=line_item_locale(li.targeting.audience),
                 )
                 created.campaigns.append(created_li["id"])
@@ -302,9 +294,10 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
         if unresolved_by_li:
             result["notes"]["unresolved_b2b_targeting"] = unresolved_by_li
             result["notes"]["unresolved_b2b_hint"] = (
-                "These B2B facets are present on the Brief audience but were not pushed to "
-                "LinkedIn — they require URN resolution via the typeahead endpoint, which is "
-                "not wired in this slice. Add them manually in Campaign Manager before activation."
+                "These facet values came from the Brief but matched no LinkedIn targeting "
+                "entity (typeahead/standardized lookup returned nothing), so they were not "
+                "pushed — we never guess a URN. Add them manually in Campaign Manager before "
+                "activation, or refine the wording to match LinkedIn's taxonomy."
             )
 
     return result
