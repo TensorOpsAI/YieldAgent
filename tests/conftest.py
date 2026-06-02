@@ -7,7 +7,8 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Strip provider API keys so tests never accidentally hit real APIs."""
+    """Strip LLM + ad-provider credentials and the live-run flag so tests never
+    accidentally hit real APIs or live ad accounts."""
     for var in (
         "ANTHROPIC_API_KEY",
         "GOOGLE_API_KEY",
