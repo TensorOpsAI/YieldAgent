@@ -141,6 +141,173 @@ async def create_creative(campaign_urn: str, content: dict[str, Any]) -> dict[st
         return await client.create_creative(campaign_urn=campaign_urn, content=content)
 
 
+def _group_budget(parsed: Campaign) -> tuple[Any, str]:
+    """Choose the campaign-group total budget.
+
+    An explicit `lifetime_budget` wins; otherwise sum the line-item budgets in
+    the first line item's currency.
+    """
+    if parsed.lifetime_budget is not None:
+        return parsed.lifetime_budget.amount, parsed.lifetime_budget.currency
+    if parsed.line_items:
+        currency = parsed.line_items[0].budget.currency
+        amount = sum(
+            li.budget.amount for li in parsed.line_items if li.budget.currency == currency
+        )
+        return amount, currency
+    raise ValueError("Campaign has no line_items and no lifetime_budget")
+
+
+async def _resolve_org_urn(
+    client: LinkedInClient, config: LinkedInConfig, parsed: Campaign
+) -> str | None:
+    """Resolve the Company Page URN that authors Direct Sponsored Content posts.
+
+    Only needed when at least one ad mints a fresh post; ads reusing a
+    hand-published post via `existing_post_urn` require no org. Raises if a post
+    must be minted but no usable organization URN is available.
+    """
+    if all(ad.creative.existing_post_urn for ad in parsed.ads):
+        return config.organization_urn
+    org_urn = config.organization_urn
+    if org_urn is None:
+        account = await client.get_ad_account()
+        org_urn = account.get("reference")
+    if not org_urn or not str(org_urn).startswith("urn:li:organization:"):
+        raise ValueError(
+            "No organization (Company Page) is associated with this ad account, "
+            "so Direct Sponsored Content posts cannot be authored for creatives. "
+            "Set LINKEDIN_ORGANIZATION_URN, or use an ad account linked to a page, "
+            "or set `existing_post_urn` on every ad to reuse hand-published posts."
+        )
+    return org_urn
+
+
+async def _create_group(
+    client: LinkedInClient, parsed: Campaign, created: _Created, amount: Any, currency: str
+) -> tuple[str, str]:
+    """Create the DRAFT Campaign Group, track it, and return (id, urn)."""
+    group = await client.create_campaign_group(
+        name=parsed.name,
+        total_budget=money_to_linkedin_amount(amount, currency),
+        # LinkedIn now requires runSchedule on the group; span all line items.
+        run_schedule=campaign_run_schedule([li.flight for li in parsed.line_items]),
+    )
+    created.groups.append(group["id"])
+    return group["id"], f"urn:li:sponsoredCampaignGroup:{group['id']}"
+
+
+async def _create_line_items(
+    client: LinkedInClient,
+    parsed: Campaign,
+    created: _Created,
+    group_urn: str,
+    objective_type: str,
+) -> tuple[dict[str, str], dict[str, dict[str, Any]], list[dict[str, Any]]]:
+    """Create one DRAFT Campaign per LineItem, resolving its B2B targeting.
+
+    Returns the per-line-item campaign URNs, any unresolved targeting facets
+    keyed by line-item name, and the result rows for the publish response.
+    """
+    resolver = TargetingResolver(client)
+    line_item_urns: dict[str, str] = {}
+    unresolved_by_li: dict[str, dict[str, Any]] = {}
+    results: list[dict[str, Any]] = []
+    for li in parsed.line_items:
+        resolved = await resolver.resolve(li.targeting.audience)
+        if resolved.unresolved:
+            unresolved_by_li[li.name] = resolved.unresolved
+        created_li = await client.create_campaign(
+            campaign_group_urn=group_urn,
+            name=li.name,
+            objective_type=objective_type,
+            campaign_type=DEFAULT_CAMPAIGN_TYPE,
+            total_budget=money_to_linkedin_amount(li.budget.amount, li.budget.currency),
+            run_schedule=flight_to_run_schedule(li.flight),
+            targeting_criteria=resolved.criteria,
+            locale=line_item_locale(li.targeting.audience),
+        )
+        created.campaigns.append(created_li["id"])
+        urn = f"urn:li:sponsoredCampaign:{created_li['id']}"
+        line_item_urns[li.name] = urn
+        results.append({"name": li.name, "id": created_li["id"], "urn": urn})
+    return line_item_urns, unresolved_by_li, results
+
+
+async def _create_ads(
+    client: LinkedInClient,
+    config: LinkedInConfig,
+    parsed: Campaign,
+    created: _Created,
+    line_item_urns: dict[str, str],
+    org_urn: str | None,
+) -> list[dict[str, Any]]:
+    """Create a DRAFT Creative per Ad, minting a dark post where needed.
+
+    Each ad either references a hand-published post (`existing_post_urn`) or
+    mints a new Direct Sponsored Content post authored by `org_urn`.
+    """
+    results: list[dict[str, Any]] = []
+    for ad in parsed.ads:
+        campaign_urn = line_item_urns.get(ad.line_item_name)
+        if not campaign_urn:
+            raise ValueError(
+                f"Ad {ad.name!r} references unknown line_item_name {ad.line_item_name!r}"
+            )
+        if ad.creative.existing_post_urn:
+            post_urn = ad.creative.existing_post_urn
+        else:
+            post = await client.create_post(
+                author_urn=org_urn,
+                commentary=post_commentary(ad.creative),
+                article=post_article_content(ad.creative),
+                dsc_ad_account_urn=config.account_urn,
+            )
+            post_urn = post.get("id")
+            if post_urn:
+                created.posts.append(post_urn)
+        created_ad = await client.create_creative(
+            campaign_urn=campaign_urn,
+            content=creative_content_reference(post_urn),
+        )
+        if created_ad.get("id"):
+            created.creatives.append(created_ad["id"])
+        results.append(
+            {
+                "name": ad.name,
+                "id": created_ad.get("id"),
+                "campaign_urn": campaign_urn,
+                "post_urn": post_urn,
+            }
+        )
+    return results
+
+
+async def _rollback_and_raise(
+    client: LinkedInClient, created: _Created, exc: Exception
+) -> None:
+    """Tear down partial work and re-raise with a human-readable summary."""
+    rolled_back = not created.is_empty()
+    cleanup_warnings = await _rollback(client, created)
+    summary = {
+        "campaign_groups": list(created.groups),
+        "campaigns": list(created.campaigns),
+        "creatives": list(created.creatives),
+        "posts": list(created.posts),
+    }
+    detail = f"publish failed: {exc}. " + (
+        f"Rolled back created resources {summary}."
+        if rolled_back
+        else "No resources were created."
+    )
+    if cleanup_warnings:
+        detail += (
+            " WARNING: some resources could not be deleted and need manual "
+            f"cleanup in Campaign Manager: {cleanup_warnings}"
+        )
+    raise RuntimeError(detail) from exc
+
+
 @mcp.tool()
 async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
     """Create a paused draft Campaign on LinkedIn in one call.
@@ -151,145 +318,37 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
     manual activation step in LinkedIn Campaign Manager.
 
     Returns the URNs created so the agent can present them for approval, plus a
-    `notes` block flagging any B2B targeting facets that were not pushed to the
-    API (URN resolution for industries/seniorities/etc. is a follow-up).
+    `notes` block flagging any B2B targeting facet values from the Brief that
+    matched no LinkedIn entity (so they were not pushed — we never guess a URN).
     """
     parsed = Campaign.model_validate(campaign)
     config = LinkedInConfig.from_env()
 
     result: dict[str, Any] = {"line_items": [], "ads": [], "notes": {}}
+    unresolved_by_li: dict[str, dict[str, Any]] = {}
+
     async with LinkedInClient(config) as client:
         client.assert_account_allowed()
-
-        # Choose a campaign-group total budget: explicit lifetime_budget if set,
-        # otherwise the sum of line-item budgets in the first line item's currency.
-        if parsed.lifetime_budget is not None:
-            group_amount = parsed.lifetime_budget.amount
-            group_currency = parsed.lifetime_budget.currency
-        elif parsed.line_items:
-            group_currency = parsed.line_items[0].budget.currency
-            group_amount = sum(
-                li.budget.amount for li in parsed.line_items if li.budget.currency == group_currency
-            )
-        else:
-            raise ValueError("Campaign has no line_items and no lifetime_budget")
+        amount, currency = _group_budget(parsed)
 
         # Track every resource we create so we can tear it down if a later step
         # fails — LinkedIn has no transaction, so a mid-flow error otherwise
         # strands orphaned DRAFTs on the account.
         created = _Created()
         try:
-            group = await client.create_campaign_group(
-                name=parsed.name,
-                total_budget=money_to_linkedin_amount(group_amount, group_currency),
-                # LinkedIn now requires runSchedule on the group; span all line items.
-                run_schedule=campaign_run_schedule([li.flight for li in parsed.line_items]),
-            )
-            created.groups.append(group["id"])
-            group_urn = f"urn:li:sponsoredCampaignGroup:{group['id']}"
-            result["campaign_id"] = group["id"]
+            group_id, group_urn = await _create_group(client, parsed, created, amount, currency)
+            result["campaign_id"] = group_id
             result["campaign_group_urn"] = group_urn
 
-            objective_type = campaign_objective(parsed)
-
-            # Creatives reference a real Post. Ads carrying `existing_post_urn` reuse a
-            # hand-published post; the rest mint a new Direct Sponsored Content post,
-            # which must be authored by a Company Page. Only resolve/require the org URN
-            # when at least one ad needs a fresh post.
-            org_urn = config.organization_urn
-            if any(not ad.creative.existing_post_urn for ad in parsed.ads):
-                if org_urn is None:
-                    account = await client.get_ad_account()
-                    org_urn = account.get("reference")
-                if not org_urn or not str(org_urn).startswith("urn:li:organization:"):
-                    raise ValueError(
-                        "No organization (Company Page) is associated with this ad account, "
-                        "so Direct Sponsored Content posts cannot be authored for creatives. "
-                        "Set LINKEDIN_ORGANIZATION_URN, or use an ad account linked to a page, "
-                        "or set `existing_post_urn` on every ad to reuse hand-published posts."
-                    )
-
-            line_item_urns: dict[str, str] = {}
-            unresolved_by_li: dict[str, dict[str, Any]] = {}
-            resolver = TargetingResolver(client)
-            for li in parsed.line_items:
-                resolved = await resolver.resolve(li.targeting.audience)
-                if resolved.unresolved:
-                    unresolved_by_li[li.name] = resolved.unresolved
-                run_schedule = flight_to_run_schedule(li.flight)
-                created_li = await client.create_campaign(
-                    campaign_group_urn=group_urn,
-                    name=li.name,
-                    objective_type=objective_type,
-                    campaign_type=DEFAULT_CAMPAIGN_TYPE,
-                    total_budget=money_to_linkedin_amount(li.budget.amount, li.budget.currency),
-                    run_schedule=run_schedule,
-                    targeting_criteria=resolved.criteria,
-                    locale=line_item_locale(li.targeting.audience),
-                )
-                created.campaigns.append(created_li["id"])
-                urn = f"urn:li:sponsoredCampaign:{created_li['id']}"
-                line_item_urns[li.name] = urn
-                result["line_items"].append(
-                    {"name": li.name, "id": created_li["id"], "urn": urn}
-                )
-
-            for ad in parsed.ads:
-                campaign_urn = line_item_urns.get(ad.line_item_name)
-                if not campaign_urn:
-                    raise ValueError(
-                        f"Ad {ad.name!r} references unknown line_item_name {ad.line_item_name!r}"
-                    )
-                # Either reference a hand-published post, or mint a dark post (DSC).
-                if ad.creative.existing_post_urn:
-                    post_urn = ad.creative.existing_post_urn
-                else:
-                    post = await client.create_post(
-                        author_urn=org_urn,
-                        commentary=post_commentary(ad.creative),
-                        article=post_article_content(ad.creative),
-                        dsc_ad_account_urn=config.account_urn,
-                    )
-                    post_urn = post.get("id")
-                    if post_urn:
-                        created.posts.append(post_urn)
-                created_ad = await client.create_creative(
-                    campaign_urn=campaign_urn,
-                    content=creative_content_reference(post_urn),
-                )
-                if created_ad.get("id"):
-                    created.creatives.append(created_ad["id"])
-                result["ads"].append(
-                    {
-                        "name": ad.name,
-                        "id": created_ad.get("id"),
-                        "campaign_urn": campaign_urn,
-                        "post_urn": post_urn,
-                    }
-                )
-        except Exception as exc:
-            rolled_back = not created.is_empty()
-            cleanup_warnings = await _rollback(client, created)
-            summary = {
-                "campaign_groups": list(created.groups),
-                "campaigns": list(created.campaigns),
-                "creatives": list(created.creatives),
-                "posts": list(created.posts),
-            }
-            detail = (
-                f"publish failed: {exc}. "
-                + (
-                    f"Rolled back created resources {summary}."
-                    if rolled_back
-                    else "No resources were created."
-                )
+            org_urn = await _resolve_org_urn(client, config, parsed)
+            line_item_urns, unresolved_by_li, result["line_items"] = await _create_line_items(
+                client, parsed, created, group_urn, campaign_objective(parsed)
             )
-            if cleanup_warnings:
-                detail += (
-                    " WARNING: some resources could not be deleted and need manual "
-                    f"cleanup in Campaign Manager: {cleanup_warnings}"
-                )
-            raise RuntimeError(detail) from exc
+            result["ads"] = await _create_ads(
+                client, config, parsed, created, line_item_urns, org_urn
+            )
+        except Exception as exc:
+            await _rollback_and_raise(client, created, exc)
 
         if unresolved_by_li:
             result["notes"]["unresolved_b2b_targeting"] = unresolved_by_li
