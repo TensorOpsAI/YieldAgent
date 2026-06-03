@@ -105,6 +105,21 @@ async def test_unknown_geo_code_is_unresolved_not_guessed() -> None:
     assert resolved.unresolved == {"geos": ["ZZ"]}
 
 
+async def test_geo_codes_are_normalized_before_lookup() -> None:
+    resolver = TargetingResolver(_FakeTargetingClient())
+    resolved = await resolver.resolve(Audience(description="x", geos=[" us ", "Pt"]))
+    # Whitespace/case variations still resolve to the same URNs.
+    assert _clause_facets(resolved.criteria) == {FACET_LOCATIONS: [_US_GEO, _PT_GEO]}
+    assert resolved.unresolved == {}
+
+
+async def test_unresolved_geo_is_reported_normalized() -> None:
+    resolver = TargetingResolver(_FakeTargetingClient())
+    resolved = await resolver.resolve(Audience(description="x", geos=["zz "]))
+    # Unresolved output is the normalized code, not the raw padded input.
+    assert resolved.unresolved == {"geos": ["ZZ"]}
+
+
 async def test_enum_facets_resolve_and_surface_misses() -> None:
     resolver = TargetingResolver(_FakeTargetingClient())
     resolved = await resolver.resolve(

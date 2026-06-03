@@ -73,7 +73,7 @@ def line_item_locale(audience: Audience) -> dict[str, str]:
     Derived from the first audience geo if it is a valid ISO 3166-1 alpha-2
     code; defaults to en/US otherwise.
     """
-    country = audience.geos[0].upper() if audience.geos else "US"
+    country = audience.geos[0].strip().upper() if audience.geos else "US"
     if pycountry.countries.get(alpha_2=country) is None:
         country = "US"
     return {"country": country, "language": "en"}
