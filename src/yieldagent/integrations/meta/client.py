@@ -11,30 +11,21 @@ from typing import Any
 
 import httpx
 
+from yieldagent.integrations._base import ApiError, BaseHttpClient
+
 from .config import MetaConfig
 
 
-class MetaError(RuntimeError):
+class MetaError(ApiError):
     """Raised for any non-2xx response from the Meta Marketing API."""
 
-    def __init__(self, status_code: int, payload: Any):
-        self.status_code = status_code
-        self.payload = payload
-        super().__init__(f"Meta API error {status_code}: {payload}")
+    platform = "Meta"
 
 
-class MetaClient:
+class MetaClient(BaseHttpClient):
     def __init__(self, config: MetaConfig, http: httpx.AsyncClient | None = None):
+        super().__init__(http)
         self.config = config
-        self._http = http or httpx.AsyncClient(timeout=30.0)
-        self._owns_http = http is None
-
-    async def __aenter__(self) -> MetaClient:
-        return self
-
-    async def __aexit__(self, *_exc: object) -> None:
-        if self._owns_http:
-            await self._http.aclose()
 
     @property
     def base_url(self) -> str:
