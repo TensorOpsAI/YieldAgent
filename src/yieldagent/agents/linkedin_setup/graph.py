@@ -13,7 +13,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from yieldagent.agents.campaign_setup.graph import GetMcpTool
 from yieldagent.agents.campaign_setup.graph import build_graph as _build_neutral_graph
-from yieldagent.agents.campaign_setup.nodes import DEFAULT_MODEL
+from yieldagent.agents.defaults import DEFAULT_MODEL
 
 
 def _default_linkedin_mcp_tool_loader() -> GetMcpTool:
