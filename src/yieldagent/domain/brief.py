@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, model_validator
 
 
-class Objective(str, Enum):
+class Objective(StrEnum):
     awareness = "awareness"
     traffic = "traffic"
     engagement = "engagement"
@@ -28,7 +28,7 @@ class Flight(BaseModel):
     end_date: date
 
     @model_validator(mode="after")
-    def _end_after_start(self) -> "Flight":
+    def _end_after_start(self) -> Flight:
         if self.end_date < self.start_date:
             raise ValueError("Flight end_date must be on or after start_date")
         return self
@@ -59,7 +59,10 @@ class Audience(BaseModel):
     # B2B targeting facets — used by LinkedIn, ignored by consumer platforms.
     industries: list[str] = Field(
         default_factory=list,
-        description="Industry names (e.g. 'Software Development', 'Financial Services'). LinkedIn resolves these to URNs.",
+        description=(
+            "Industry names (e.g. 'Software Development', 'Financial Services'). "
+            "LinkedIn resolves these to URNs."
+        ),
     )
     job_functions: list[str] = Field(
         default_factory=list,
@@ -67,7 +70,10 @@ class Audience(BaseModel):
     )
     job_titles: list[str] = Field(
         default_factory=list,
-        description="Free-form job titles (e.g. 'VP of Engineering'). LinkedIn resolves to title URNs.",
+        description=(
+            "Free-form job titles (e.g. 'VP of Engineering'). "
+            "LinkedIn resolves to title URNs."
+        ),
     )
     seniorities: list[str] = Field(
         default_factory=list,
@@ -79,7 +85,10 @@ class Audience(BaseModel):
     )
     skills: list[str] = Field(
         default_factory=list,
-        description="Skill keywords (e.g. 'Kubernetes', 'Demand Generation'). LinkedIn resolves to skill URNs.",
+        description=(
+            "Skill keywords (e.g. 'Kubernetes', 'Demand Generation'). "
+            "LinkedIn resolves to skill URNs."
+        ),
     )
 
 

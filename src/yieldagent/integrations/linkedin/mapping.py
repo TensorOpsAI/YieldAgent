@@ -17,7 +17,7 @@ naming is the only thing that shifts.
 
 from __future__ import annotations
 
-from datetime import datetime, time, timezone
+from datetime import UTC, datetime, time
 from typing import Any
 
 import pycountry
@@ -49,8 +49,8 @@ def money_to_linkedin_amount(amount: Any, currency: str) -> dict[str, str]:
 
 def flight_to_run_schedule(flight: Flight) -> dict[str, int]:
     """LinkedIn `runSchedule` uses epoch milliseconds. End-date is inclusive."""
-    start = datetime.combine(flight.start_date, time.min, tzinfo=timezone.utc)
-    end = datetime.combine(flight.end_date, time.max, tzinfo=timezone.utc)
+    start = datetime.combine(flight.start_date, time.min, tzinfo=UTC)
+    end = datetime.combine(flight.end_date, time.max, tzinfo=UTC)
     return {"start": int(start.timestamp() * 1000), "end": int(end.timestamp() * 1000)}
 
 

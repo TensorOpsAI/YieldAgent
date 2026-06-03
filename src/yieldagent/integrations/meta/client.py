@@ -29,7 +29,7 @@ class MetaClient:
         self._http = http or httpx.AsyncClient(timeout=30.0)
         self._owns_http = http is None
 
-    async def __aenter__(self) -> "MetaClient":
+    async def __aenter__(self) -> MetaClient:
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
@@ -80,7 +80,10 @@ class MetaClient:
                 {
                     "error": "refusing to operate on a non-test ad account",
                     "account_id": self.config.ad_account_id,
-                    "hint": "create a test account in Meta Business Manager, or set YIELDAGENT_ALLOW_LIVE=1 to override",
+                    "hint": (
+                        "create a test account in Meta Business Manager, or set "
+                        "YIELDAGENT_ALLOW_LIVE=1 to override"
+                    ),
                 },
             )
         return account
