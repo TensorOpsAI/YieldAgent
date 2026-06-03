@@ -8,17 +8,14 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import interrupt
 
+from yieldagent.agents.defaults import DEFAULT_MODEL
 from yieldagent.domain import Brief, Campaign, CampaignStatus
 
 from .prompts import PARSE_BRIEF_SYSTEM, PLAN_CAMPAIGN_SYSTEM
 from .state import AgentState, AuditEntry
 
-# Provider is inferred from the model name by init_chat_model:
-#   gemini-*         -> google_genai (requires GOOGLE_API_KEY)
-#   claude-*         -> anthropic    (requires ANTHROPIC_API_KEY)
-#   gpt-*            -> openai       (requires OPENAI_API_KEY)
-# Override at the CLI via --model, or pass an explicit "provider:model" string.
-DEFAULT_MODEL = "gemini-3.1-pro-preview"
+# DEFAULT_MODEL is re-exported (it lives in the neutral defaults module) so
+# existing `nodes.DEFAULT_MODEL` references keep working.
 
 
 def _resolve_model_name(model_name: str) -> str:
