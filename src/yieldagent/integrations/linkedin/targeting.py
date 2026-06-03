@@ -193,7 +193,8 @@ class TargetingResolver:
         """
         urns: list[str] = []
         unresolved: list[str] = []
-        for code in audience.geos:
+        for raw in audience.geos:
+            code = raw.strip().upper()
             name = _country_name(code)
             urn = None
             if name:

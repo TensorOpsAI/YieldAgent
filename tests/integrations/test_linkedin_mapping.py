@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from datetime import date
 
-from yieldagent.domain import CreativeAsset, Flight
+from yieldagent.domain import Audience, CreativeAsset, Flight
 from yieldagent.integrations.linkedin.mapping import (
     campaign_run_schedule,
     creative_content_reference,
     flight_to_run_schedule,
+    line_item_locale,
     post_article_content,
 )
 
@@ -74,3 +75,13 @@ def test_post_article_content_defaults_source_when_no_landing_url() -> None:
 
 def test_creative_content_reference_wraps_post_urn() -> None:
     assert creative_content_reference("urn:li:share:123") == {"reference": "urn:li:share:123"}
+
+
+def test_line_item_locale_strips_and_uppercases_geo() -> None:
+    # A padded/lowercase code must still produce a valid locale, not fall back to US.
+    locale = line_item_locale(Audience(description="x", geos=["pt "]))
+    assert locale == {"country": "PT", "language": "en"}
+
+
+def test_line_item_locale_defaults_to_us_for_unknown_code() -> None:
+    assert line_item_locale(Audience(description="x", geos=["ZZ"]))["country"] == "US"
