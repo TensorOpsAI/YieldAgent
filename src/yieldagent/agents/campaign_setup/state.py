@@ -24,6 +24,5 @@ class AgentState(TypedDict, total=False):
     brief: Brief
     campaign: Campaign
     approved: bool
-    rejection_reason: str
     publish_result: dict[str, Any]
     audit: list[AuditEntry]

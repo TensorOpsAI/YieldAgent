@@ -111,7 +111,6 @@ def human_gate(state: AgentState) -> dict[str, Any]:
     reason = decision.get("reason", "")
     return {
         "approved": approved,
-        "rejection_reason": "" if approved else reason,
         "audit": _audit(
             state,
             AuditEntry(

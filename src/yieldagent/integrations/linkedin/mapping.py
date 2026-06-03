@@ -20,7 +20,9 @@ from __future__ import annotations
 from datetime import datetime, time, timezone
 from typing import Any
 
-from yieldagent.domain import Audience, Campaign, CreativeAsset, Flight, LineItem, Objective
+import pycountry
+
+from yieldagent.domain import Audience, Campaign, CreativeAsset, Flight, Objective
 
 # LinkedIn objectiveType values for Sponsored Content campaigns.
 OBJECTIVE_TO_LINKEDIN: dict[Objective, str] = {
@@ -30,27 +32,6 @@ OBJECTIVE_TO_LINKEDIN: dict[Objective, str] = {
     Objective.leads: "LEAD_GENERATION",
     Objective.app_promotion: "WEBSITE_VISITS",  # no dedicated app-install on LinkedIn
     Objective.sales: "WEBSITE_CONVERSIONS",
-}
-
-# LinkedIn requires geo URNs (urn:li:geo:{id}) — ISO codes are not accepted.
-# Production use should resolve via the geo typeahead endpoint; the few entries
-# below cover the common-case countries so simple briefs work out of the box.
-ISO_TO_LINKEDIN_GEO_URN: dict[str, str] = {
-    "US": "urn:li:geo:103644278",
-    "GB": "urn:li:geo:101165590",
-    "CA": "urn:li:geo:101174742",
-    "DE": "urn:li:geo:101282230",
-    "FR": "urn:li:geo:105015875",
-    "AU": "urn:li:geo:101452733",
-    "IN": "urn:li:geo:102713980",
-    "IL": "urn:li:geo:101620260",
-    "BR": "urn:li:geo:106057199",
-    "JP": "urn:li:geo:101355337",
-    "NL": "urn:li:geo:102890719",
-    "ES": "urn:li:geo:105646813",
-    "IT": "urn:li:geo:103350119",
-    "SE": "urn:li:geo:105117694",
-    "SG": "urn:li:geo:102454443",
 }
 
 # LinkedIn campaign type for standard image / single-share Sponsored Content.
@@ -86,66 +67,16 @@ def campaign_run_schedule(flights: list[Flight]) -> dict[str, int]:
     return flight_to_run_schedule(Flight(start_date=earliest, end_date=latest))
 
 
-def audience_to_targeting(audience: Audience) -> dict[str, Any]:
-    """Build a geo-only LinkedIn `targetingCriteria` payload.
-
-    This is the static, client-free baseline (locations only). Live B2B facet
-    resolution — industries, job functions, titles, seniorities, company sizes,
-    skills — needs API lookups and lives in `targeting.TargetingResolver`, which
-    the publish flow uses. This helper remains for inspection/test scaffolding.
-    """
-    includes: list[str] = []
-    for code in audience.geos:
-        urn = ISO_TO_LINKEDIN_GEO_URN.get(code.upper())
-        if urn:
-            includes.append(urn)
-    if not includes:
-        # LinkedIn requires at least one location; default to US.
-        includes.append(ISO_TO_LINKEDIN_GEO_URN["US"])
-
-    return {
-        "include": {
-            "and": [
-                {
-                    "or": {
-                        "urn:li:adTargetingFacet:locations": includes,
-                    }
-                }
-            ]
-        }
-    }
-
-
 def line_item_locale(audience: Audience) -> dict[str, str]:
     """LinkedIn campaigns require a `locale` (country + language).
 
-    Derived from the first audience geo if available; defaults to en/US.
+    Derived from the first audience geo if it is a valid ISO 3166-1 alpha-2
+    code; defaults to en/US otherwise.
     """
-    country = (audience.geos[0].upper() if audience.geos else "US")
-    if country not in ISO_TO_LINKEDIN_GEO_URN:
+    country = audience.geos[0].upper() if audience.geos else "US"
+    if pycountry.countries.get(alpha_2=country) is None:
         country = "US"
     return {"country": country, "language": "en"}
-
-
-def line_item_payload(
-    line_item: LineItem,
-    *,
-    campaign_group_urn: str,
-    objective_type: str,
-) -> dict[str, Any]:
-    """Strict-typed snapshot of the create_campaign call for testing/inspection."""
-    return {
-        "campaignGroup": campaign_group_urn,
-        "name": line_item.name,
-        "objectiveType": objective_type,
-        "type": DEFAULT_CAMPAIGN_TYPE,
-        "totalBudget": money_to_linkedin_amount(
-            line_item.budget.amount, line_item.budget.currency
-        ),
-        "runSchedule": flight_to_run_schedule(line_item.flight),
-        "targetingCriteria": audience_to_targeting(line_item.targeting.audience),
-        "locale": line_item_locale(line_item.targeting.audience),
-    }
 
 
 def post_article_content(creative: CreativeAsset) -> dict[str, Any]:
@@ -181,15 +112,12 @@ def creative_content_reference(post_urn: str) -> dict[str, Any]:
 
 __all__ = [
     "DEFAULT_CAMPAIGN_TYPE",
-    "ISO_TO_LINKEDIN_GEO_URN",
     "OBJECTIVE_TO_LINKEDIN",
-    "audience_to_targeting",
     "campaign_objective",
     "campaign_run_schedule",
     "creative_content_reference",
     "flight_to_run_schedule",
     "line_item_locale",
-    "line_item_payload",
     "money_to_linkedin_amount",
     "post_article_content",
     "post_commentary",
