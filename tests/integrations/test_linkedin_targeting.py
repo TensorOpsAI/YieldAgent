@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from yieldagent.domain import Audience
 from yieldagent.integrations.linkedin.targeting import (
+    DEFAULT_GEO_URN,
     FACET_INDUSTRIES,
     FACET_JOB_FUNCTIONS,
     FACET_LOCATIONS,
@@ -20,6 +21,7 @@ from yieldagent.integrations.linkedin.targeting import (
 )
 
 _US_GEO = "urn:li:geo:103644278"
+_PT_GEO = "urn:li:geo:100364837"
 
 
 def _named(id_: int, name: str) -> dict:
@@ -35,6 +37,13 @@ class _FakeTargetingClient:
         self.typeahead_calls: list[tuple[str, str]] = []
         # facet -> query(lowercased) -> hits
         self.typeahead: dict[str, dict[str, list[dict]]] = {
+            FACET_LOCATIONS: {
+                "united states": [{"urn": _US_GEO, "name": "United States"}],
+                "portugal": [
+                    {"urn": _PT_GEO, "name": "Portugal"},
+                    {"urn": "urn:li:geo:105374601", "name": "Porto, Portugal"},
+                ],
+            },
             FACET_INDUSTRIES: {
                 "advertising": [{"urn": "urn:li:industry:80", "name": "Advertising Services"}],
             },
@@ -76,8 +85,24 @@ def _clause_facets(criteria: dict) -> dict[str, list]:
 async def test_geo_only_defaults_to_us_when_empty() -> None:
     resolver = TargetingResolver(_FakeTargetingClient())
     resolved = await resolver.resolve(Audience(description="x", geos=[]))
-    assert _clause_facets(resolved.criteria) == {FACET_LOCATIONS: [_US_GEO]}
+    assert _clause_facets(resolved.criteria) == {FACET_LOCATIONS: [DEFAULT_GEO_URN]}
     assert resolved.unresolved == {}
+
+
+async def test_geos_resolve_via_typeahead_by_country_name() -> None:
+    resolver = TargetingResolver(_FakeTargetingClient())
+    resolved = await resolver.resolve(Audience(description="x", geos=["US", "PT"]))
+    # "PT" -> "Portugal" exact match wins over "Porto, Portugal".
+    assert _clause_facets(resolved.criteria) == {FACET_LOCATIONS: [_US_GEO, _PT_GEO]}
+    assert resolved.unresolved == {}
+
+
+async def test_unknown_geo_code_is_unresolved_not_guessed() -> None:
+    resolver = TargetingResolver(_FakeTargetingClient())
+    resolved = await resolver.resolve(Audience(description="x", geos=["ZZ"]))
+    # Invalid ISO code -> surfaced as unresolved; locations falls back to default.
+    assert _clause_facets(resolved.criteria) == {FACET_LOCATIONS: [DEFAULT_GEO_URN]}
+    assert resolved.unresolved == {"geos": ["ZZ"]}
 
 
 async def test_enum_facets_resolve_and_surface_misses() -> None:

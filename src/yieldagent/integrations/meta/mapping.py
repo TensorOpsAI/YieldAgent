@@ -10,7 +10,7 @@ from datetime import datetime, time, timezone
 from decimal import Decimal
 from typing import Any
 
-from yieldagent.domain import Audience, Campaign, CreativeAsset, Flight, LineItem, Objective
+from yieldagent.domain import Audience, Campaign, CreativeAsset, Flight, Objective
 
 OBJECTIVE_TO_META: dict[Objective, str] = {
     Objective.awareness: "OUTCOME_AWARENESS",
@@ -65,20 +65,6 @@ def audience_to_targeting(audience: Audience) -> dict[str, Any]:
     # interests intentionally omitted — Meta requires adinterest IDs from a
     # search endpoint, which the agent should resolve in a follow-up pass.
     return targeting
-
-
-def line_item_payload(line_item: LineItem, campaign_id: str) -> dict[str, Any]:
-    start, end = flight_to_meta_times(line_item.flight)
-    return {
-        "campaign_id": campaign_id,
-        "name": line_item.name,
-        "lifetime_budget_minor": to_minor_units(
-            line_item.budget.amount, line_item.budget.currency
-        ),
-        "start_time": start,
-        "end_time": end,
-        "targeting": audience_to_targeting(line_item.targeting.audience),
-    }
 
 
 def creative_payload(creative: CreativeAsset, page_id: str) -> dict[str, Any]:

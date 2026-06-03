@@ -68,6 +68,13 @@ class _FakeClient:
     def assert_account_allowed(self) -> None:
         pass
 
+    async def typeahead_targeting_entities(self, *, facet: str, query: str) -> list[dict]:
+        # The audience here is geo-only; resolve the locations typeahead and
+        # leave every other facet empty.
+        if facet.endswith("locations"):
+            return [{"urn": "urn:li:geo:103644278", "name": "United States"}]
+        return []
+
     async def get_ad_account(self) -> dict:
         return {"reference": _ORG_URN}
 
