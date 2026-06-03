@@ -11,9 +11,11 @@ the API exposes (the `availableEntityFinders` on `GET /adTargetingFacets`):
     and match names against it. URNs are `urn:li:seniority:{id}` / `urn:li:function:{id}`.
   * Open taxonomies — industries, titles, skills — are resolved via the
     typeahead finder, which returns `{urn, name}` ranked by relevance.
-  * company_sizes — a fixed 9-bucket enum whose targeting values are plain
-    strings (`SIZE_11_TO_50`, ...), mapped statically.
-  * locations — geo URNs from the static ISO map in `mapping`.
+  * company_sizes — a fixed 9-bucket enum whose targeting values are range
+    tuple URNs (`urn:li:staffCountRange:(min,max)`), mapped statically.
+  * locations — the brief carries ISO 3166-1 alpha-2 codes; each is expanded to
+    its country name via `pycountry` and resolved through the same typeahead
+    finder, so any country works (not just a hardcoded shortlist).
 
 Names that resolve to no real LinkedIn URN are never guessed: they are collected
 in `ResolvedTargeting.unresolved` so the caller can surface them as a manual step
@@ -25,9 +27,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from yieldagent.domain import Audience
+import pycountry
 
-from .mapping import ISO_TO_LINKEDIN_GEO_URN
+from yieldagent.domain import Audience
 
 FACET_LOCATIONS = "urn:li:adTargetingFacet:locations"
 FACET_SENIORITIES = "urn:li:adTargetingFacet:seniorities"
@@ -36,6 +38,11 @@ FACET_INDUSTRIES = "urn:li:adTargetingFacet:industries"
 FACET_TITLES = "urn:li:adTargetingFacet:titles"
 FACET_SKILLS = "urn:li:adTargetingFacet:skills"
 FACET_STAFF_COUNT = "urn:li:adTargetingFacet:staffCountRanges"
+
+# LinkedIn requires at least one location. When a brief names no resolvable
+# country we fall back to this (United States) so the campaign is still valid;
+# the unresolved codes are still surfaced so the caller knows to fix them.
+DEFAULT_GEO_URN = "urn:li:geo:103644278"
 
 # Brief company-size buckets -> LinkedIn staffCountRange URNs. In targetingCriteria
 # the value is a range tuple URN (min,max), NOT the SIZE_* enum the facet listing
@@ -77,6 +84,19 @@ def _norm_size(value: str) -> str:
 
 def _localized_name(entity: dict[str, Any]) -> str | None:
     return entity.get("name", {}).get("localized", {}).get("en_US")
+
+
+def _country_name(code: str) -> str | None:
+    """Map an ISO 3166-1 alpha-2 code to a country name LinkedIn will recognise.
+
+    Prefers the colloquial `common_name` (e.g. "South Korea" over "Korea,
+    Republic of") since that is what the locations typeahead indexes. Returns
+    None for codes `pycountry` does not know, so they surface as unresolved.
+    """
+    country = pycountry.countries.get(alpha_2=code.strip().upper())
+    if country is None:
+        return None
+    return getattr(country, "common_name", None) or country.name
 
 
 def _best_typeahead_match(query: str, hits: list[dict[str, Any]]) -> str | None:
@@ -163,21 +183,36 @@ class TargetingResolver:
                 unresolved.append(size)
         return values, unresolved
 
-    @staticmethod
-    def _geo_urns(audience: Audience) -> list[str]:
-        urns = [
-            ISO_TO_LINKEDIN_GEO_URN[code.upper()]
-            for code in audience.geos
-            if code.upper() in ISO_TO_LINKEDIN_GEO_URN
-        ]
-        # LinkedIn requires at least one location.
-        return urns or [ISO_TO_LINKEDIN_GEO_URN["US"]]
+    async def _resolve_geos(self, audience: Audience) -> tuple[list[str], list[str]]:
+        """Resolve ISO country codes to geo URNs via the locations typeahead.
+
+        Each code is expanded to a country name (`pycountry`) and looked up; a
+        code we cannot expand, or that the typeahead does not match, is returned
+        as unresolved. Falls back to the default location when nothing resolves,
+        since LinkedIn requires at least one.
+        """
+        urns: list[str] = []
+        unresolved: list[str] = []
+        for code in audience.geos:
+            name = _country_name(code)
+            urn = None
+            if name:
+                hits = await self._client.typeahead_targeting_entities(
+                    facet=FACET_LOCATIONS, query=name
+                )
+                urn = _best_typeahead_match(name, hits)
+            if urn:
+                urns.append(urn)
+            else:
+                unresolved.append(code)
+        return urns or [DEFAULT_GEO_URN], unresolved
 
     async def resolve(self, audience: Audience) -> ResolvedTargeting:
-        clauses: list[dict[str, Any]] = [
-            {"or": {FACET_LOCATIONS: self._geo_urns(audience)}}
-        ]
+        geo_urns, geo_unresolved = await self._resolve_geos(audience)
+        clauses: list[dict[str, Any]] = [{"or": {FACET_LOCATIONS: geo_urns}}]
         unresolved: dict[str, list[str]] = {}
+        if geo_unresolved:
+            unresolved["geos"] = geo_unresolved
 
         def _add(facet: str, urns: list[str], missing: list[str], key: str) -> None:
             if urns:
@@ -218,6 +253,7 @@ class TargetingResolver:
 
 __all__ = [
     "COMPANY_SIZE_TO_STAFF_RANGE",
+    "DEFAULT_GEO_URN",
     "FACET_INDUSTRIES",
     "FACET_JOB_FUNCTIONS",
     "FACET_LOCATIONS",

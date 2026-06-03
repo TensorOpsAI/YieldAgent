@@ -31,6 +31,8 @@ meta = [
 linkedin = [
     "mcp>=1.2",
     "httpx>=0.27",
+    # ISO 3166 country data for resolving brief geo codes to LinkedIn locations.
+    "pycountry>=23",
 ]
 agent = [
     "langchain>=0.3",
