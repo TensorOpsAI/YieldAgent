@@ -87,14 +87,12 @@ def campaign_run_schedule(flights: list[Flight]) -> dict[str, int]:
 
 
 def audience_to_targeting(audience: Audience) -> dict[str, Any]:
-    """Build a LinkedIn `targetingCriteria` payload.
+    """Build a geo-only LinkedIn `targetingCriteria` payload.
 
-    Only geo targeting is wired in this slice. B2B facets (industries, job
-    functions, seniorities, company sizes, skills) require URN resolution via
-    the typeahead endpoint — a follow-up. They are present on the Audience for
-    Brief round-trip fidelity, but are not pushed to the API here. If any B2B
-    facets are set, a hint is included in the payload under `_unresolved_b2b`
-    so the caller can log and surface them at approval time.
+    This is the static, client-free baseline (locations only). Live B2B facet
+    resolution — industries, job functions, titles, seniorities, company sizes,
+    skills — needs API lookups and lives in `targeting.TargetingResolver`, which
+    the publish flow uses. This helper remains for inspection/test scaffolding.
     """
     includes: list[str] = []
     for code in audience.geos:
@@ -105,7 +103,7 @@ def audience_to_targeting(audience: Audience) -> dict[str, Any]:
         # LinkedIn requires at least one location; default to US.
         includes.append(ISO_TO_LINKEDIN_GEO_URN["US"])
 
-    criteria: dict[str, Any] = {
+    return {
         "include": {
             "and": [
                 {
@@ -116,22 +114,6 @@ def audience_to_targeting(audience: Audience) -> dict[str, Any]:
             ]
         }
     }
-
-    unresolved = {
-        k: v
-        for k, v in {
-            "industries": audience.industries,
-            "job_functions": audience.job_functions,
-            "job_titles": audience.job_titles,
-            "seniorities": audience.seniorities,
-            "company_sizes": audience.company_sizes,
-            "skills": audience.skills,
-        }.items()
-        if v
-    }
-    if unresolved:
-        criteria["_unresolved_b2b"] = unresolved
-    return criteria
 
 
 def line_item_locale(audience: Audience) -> dict[str, str]:

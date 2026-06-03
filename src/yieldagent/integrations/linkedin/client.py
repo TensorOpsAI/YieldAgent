@@ -297,6 +297,31 @@ class LinkedInClient:
         key = quote(str(post_urn), safe="")
         await self._request("DELETE", f"/posts/{key}")
 
+    async def typeahead_targeting_entities(self, *, facet: str, query: str) -> list[dict[str, Any]]:
+        """Search a targeting facet's open taxonomy (industries, titles, skills).
+
+        Returns the relevance-ranked entities `[{urn, name, facetUrn}, ...]`. Only
+        facets whose `availableEntityFinders` include `TYPEAHEAD` accept this — the
+        closed enums (seniorities, jobFunctions) 400 here and must use the
+        standardized-data endpoints instead.
+        """
+        res = await self._request(
+            "GET",
+            "/adTargetingEntities",
+            params={"q": "typeahead", "query": query, "facet": facet},
+        )
+        return res.get("elements", [])
+
+    async def list_seniorities(self) -> list[dict[str, Any]]:
+        """Standardized seniority taxonomy: `[{id, name:{localized:{en_US}}}, ...]` (10)."""
+        res = await self._request("GET", "/seniorities", params={"count": 50})
+        return res.get("elements", [])
+
+    async def list_functions(self) -> list[dict[str, Any]]:
+        """Standardized job-function taxonomy: `[{id, name:{localized:{en_US}}}, ...]` (26)."""
+        res = await self._request("GET", "/functions", params={"count": 50})
+        return res.get("elements", [])
+
     async def list_campaigns(self) -> dict[str, Any]:
         """List campaigns under the configured ad account.
 
