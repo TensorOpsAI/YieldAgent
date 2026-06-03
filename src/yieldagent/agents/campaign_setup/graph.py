@@ -12,7 +12,7 @@ caller resumes with `Command(resume={"approved": bool, "reason": str})`.
 from __future__ import annotations
 
 import sys
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer

@@ -15,14 +15,14 @@ support it.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 from .brief import Audience, CreativeAsset, Flight, Money, Objective
 
 
-class CampaignStatus(str, Enum):
+class CampaignStatus(StrEnum):
     draft = "draft"
     paused = "paused"
     active = "active"
