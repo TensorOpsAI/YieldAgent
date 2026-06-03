@@ -17,6 +17,8 @@ from urllib.parse import quote
 
 import httpx
 
+from yieldagent.integrations._base import ApiError, BaseHttpClient
+
 from .config import LinkedInConfig
 
 _BASE_URL = "https://api.linkedin.com/rest"
@@ -26,27 +28,16 @@ _FORBIDDEN_STATUSES = {"ACTIVE", "COMPLETED"}
 _POLITICAL_INTENT_VALUES = {"POLITICAL", "NOT_POLITICAL", "NOT_DECLARED"}
 
 
-class LinkedInError(RuntimeError):
+class LinkedInError(ApiError):
     """Raised for any non-2xx response from the LinkedIn Marketing API."""
 
-    def __init__(self, status_code: int, payload: Any):
-        self.status_code = status_code
-        self.payload = payload
-        super().__init__(f"LinkedIn API error {status_code}: {payload}")
+    platform = "LinkedIn"
 
 
-class LinkedInClient:
+class LinkedInClient(BaseHttpClient):
     def __init__(self, config: LinkedInConfig, http: httpx.AsyncClient | None = None):
+        super().__init__(http)
         self.config = config
-        self._http = http or httpx.AsyncClient(timeout=30.0)
-        self._owns_http = http is None
-
-    async def __aenter__(self) -> LinkedInClient:
-        return self
-
-    async def __aexit__(self, *_exc: object) -> None:
-        if self._owns_http:
-            await self._http.aclose()
 
     @property
     def _headers(self) -> dict[str, str]:
