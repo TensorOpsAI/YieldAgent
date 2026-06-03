@@ -6,7 +6,7 @@ adding new platforms have a clear reference for what this mapping involves.
 
 from __future__ import annotations
 
-from datetime import datetime, time, timezone
+from datetime import UTC, datetime, time
 from decimal import Decimal
 from typing import Any
 
@@ -44,9 +44,9 @@ def campaign_objective(campaign: Campaign) -> str:
 
 def flight_to_meta_times(flight: Flight) -> tuple[str, str]:
     """Meta expects ISO-8601 timestamps. Use UTC midnight bounds."""
-    start = datetime.combine(flight.start_date, time.min, tzinfo=timezone.utc)
+    start = datetime.combine(flight.start_date, time.min, tzinfo=UTC)
     # end_date is inclusive — flight ends at the end of that day
-    end = datetime.combine(flight.end_date, time.max, tzinfo=timezone.utc)
+    end = datetime.combine(flight.end_date, time.max, tzinfo=UTC)
     return start.isoformat(), end.isoformat()
 
 
@@ -59,7 +59,9 @@ def audience_to_targeting(audience: Audience) -> dict[str, Any]:
     if audience.age_max is not None:
         targeting["age_max"] = audience.age_max
     if audience.genders:
-        genders = [GENDER_TO_META[g.lower()] for g in audience.genders if g.lower() in GENDER_TO_META]
+        genders = [
+            GENDER_TO_META[g.lower()] for g in audience.genders if g.lower() in GENDER_TO_META
+        ]
         if genders:
             targeting["genders"] = genders
     # interests intentionally omitted — Meta requires adinterest IDs from a

@@ -15,7 +15,7 @@ class MetaConfig:
     allow_live: bool
 
     @classmethod
-    def from_env(cls) -> "MetaConfig":
+    def from_env(cls) -> MetaConfig:
         token = os.environ.get("META_ACCESS_TOKEN")
         account = os.environ.get("META_AD_ACCOUNT_ID")
         if not token:
