@@ -34,6 +34,11 @@ class LinkedInError(ApiError):
     platform = "LinkedIn"
 
 
+def client_from_env() -> LinkedInClient:
+    """Build a client from the environment — the one place that wiring lives."""
+    return LinkedInClient(LinkedInConfig.from_env())
+
+
 class LinkedInClient(BaseHttpClient):
     def __init__(self, config: LinkedInConfig, http: httpx.AsyncClient | None = None):
         super().__init__(http)

@@ -82,7 +82,8 @@ def _norm_size(value: str) -> str:
     return value.strip().lower().replace(" ", "")
 
 
-def _localized_name(entity: dict[str, Any]) -> str | None:
+def localized_name(entity: dict[str, Any]) -> str | None:
+    """Pull the en_US display name out of a LinkedIn standardized-taxonomy entity."""
     return entity.get("name", {}).get("localized", {}).get("en_US")
 
 
@@ -130,7 +131,7 @@ class TargetingResolver:
             self._seniority_index = {
                 _norm(name): f"urn:li:seniority:{e['id']}"
                 for e in await self._client.list_seniorities()
-                if (name := _localized_name(e))
+                if (name := localized_name(e))
             }
         return self._seniority_index
 
@@ -139,7 +140,7 @@ class TargetingResolver:
             self._function_index = {
                 _norm(name): f"urn:li:function:{e['id']}"
                 for e in await self._client.list_functions()
-                if (name := _localized_name(e))
+                if (name := localized_name(e))
             }
         return self._function_index
 
@@ -264,4 +265,5 @@ __all__ = [
     "FACET_TITLES",
     "ResolvedTargeting",
     "TargetingResolver",
+    "localized_name",
 ]

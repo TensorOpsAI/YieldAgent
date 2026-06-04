@@ -23,7 +23,7 @@ from langgraph.types import interrupt
 from yieldagent.agents.console.ad_platforms import ad_platform_status
 from yieldagent.agents.console.validation import campaign_issues
 from yieldagent.domain import Audience
-from yieldagent.integrations.linkedin.client import LinkedInClient
+from yieldagent.integrations.linkedin.client import client_from_env
 from yieldagent.integrations.linkedin.config import LinkedInConfig
 from yieldagent.integrations.linkedin.targeting import (
     COMPANY_SIZE_TO_STAFF_RANGE,
@@ -31,6 +31,7 @@ from yieldagent.integrations.linkedin.targeting import (
     FACET_SKILLS,
     FACET_TITLES,
     TargetingResolver,
+    localized_name,
 )
 from yieldagent.store import campaigns as store
 
@@ -39,14 +40,6 @@ _SEARCHABLE_FACETS = {
     "titles": FACET_TITLES,
     "skills": FACET_SKILLS,
 }
-
-
-def _client() -> LinkedInClient:
-    return LinkedInClient(LinkedInConfig.from_env())
-
-
-def _localized(entity: dict[str, Any]) -> str | None:
-    return entity.get("name", {}).get("localized", {}).get("en_US")
 
 
 @tool
@@ -66,17 +59,17 @@ async def list_seniorities() -> list[str]:
 
     Use this before targeting seniority so you pick from real options.
     """
-    async with _client() as client:
+    async with client_from_env() as client:
         items = await client.list_seniorities()
-    return [name for e in items if (name := _localized(e))]
+    return [name for e in items if (name := localized_name(e))]
 
 
 @tool
 async def list_job_functions() -> list[str]:
     """List LinkedIn's standardized job functions (e.g. Engineering, Marketing, Sales)."""
-    async with _client() as client:
+    async with client_from_env() as client:
         items = await client.list_functions()
-    return [name for e in items if (name := _localized(e))]
+    return [name for e in items if (name := localized_name(e))]
 
 
 @tool
@@ -92,11 +85,14 @@ async def search_targeting(facet: str, query: str) -> list[str]:
     `facet` must be one of: "industries", "titles", "skills". Returns the
     relevance-ranked option names LinkedIn knows for `query` (e.g.
     search_targeting("industries", "software") -> ["Software Development", ...]).
+    An empty list means no match — pick another query, never invent a value.
     """
     facet_urn = _SEARCHABLE_FACETS.get(facet.strip().lower())
     if facet_urn is None:
-        return [f"error: facet must be one of {sorted(_SEARCHABLE_FACETS)}"]
-    async with _client() as client:
+        # Raise (not an error string in the result list) so a bad facet can never
+        # be mistaken for a real hit; the agent sees the message and retries.
+        raise ValueError(f"facet must be one of {sorted(_SEARCHABLE_FACETS)}, got {facet!r}")
+    async with client_from_env() as client:
         hits = await client.typeahead_targeting_entities(facet=facet_urn, query=query)
     return [name for h in hits if (name := h.get("name"))]
 
@@ -111,7 +107,7 @@ async def preview_targeting(audience: dict[str, Any]) -> dict[str, Any]:
     Use this to confirm targeting with the operator before proposing.
     """
     parsed = Audience.model_validate(audience)
-    async with _client() as client:
+    async with client_from_env() as client:
         resolved = await TargetingResolver(client).resolve(parsed)
     facets: dict[str, list[str]] = {}
     for clause in resolved.criteria["include"]["and"]:
@@ -128,7 +124,7 @@ async def _unresolved_targeting(campaign: dict[str, Any]) -> dict[str, list[str]
     """
     merged: dict[str, list[str]] = {}
     try:
-        async with _client() as client:
+        async with client_from_env() as client:
             resolver = TargetingResolver(client)
             for line_item in campaign.get("line_items", []):
                 audience = Audience.model_validate(line_item["targeting"]["audience"])
