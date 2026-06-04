@@ -21,8 +21,10 @@ from yieldagent.env import load_dotenv
 from .client import LinkedInClient
 from .config import LinkedInConfig
 from .mapping import (
+    AUTO_BID_COST_TYPE,
     DEFAULT_CAMPAIGN_TYPE,
     campaign_objective,
+    campaign_optimization_target,
     campaign_run_schedule,
     creative_content_reference,
     flight_to_run_schedule,
@@ -152,6 +154,10 @@ async def _create_line_items(
     line_item_urns: dict[str, str] = {}
     unresolved_by_li: dict[str, dict[str, Any]] = {}
     results: list[dict[str, Any]] = []
+    # Auto-bidding (Maximum delivery): CPM + the objective's optimization target,
+    # so LinkedIn sets the bid and the draft is activation-ready without a price.
+    optimization_target = campaign_optimization_target(objective_type)
+    cost_type = AUTO_BID_COST_TYPE if optimization_target else "CPC"
     for li in parsed.line_items:
         resolved = await resolver.resolve(li.targeting.audience)
         if resolved.unresolved:
@@ -165,6 +171,8 @@ async def _create_line_items(
             run_schedule=flight_to_run_schedule(li.flight),
             targeting_criteria=resolved.criteria,
             locale=line_item_locale(li.targeting.audience),
+            cost_type=cost_type,
+            optimization_target_type=optimization_target,
         )
         created.campaigns.append(created_li["id"])
         urn = f"urn:li:sponsoredCampaign:{created_li['id']}"

@@ -37,9 +37,34 @@ OBJECTIVE_TO_LINKEDIN: dict[Objective, str] = {
 # LinkedIn campaign type for standard image / single-share Sponsored Content.
 DEFAULT_CAMPAIGN_TYPE = "SPONSORED_UPDATES"
 
+# Auto-bidding ("Maximum delivery") optimizationTargetType per objective. With one
+# of these set, LinkedIn bids automatically — costType is CPM and unitCost stays 0,
+# so we never set a manual bid (no guessed price). Without it, a campaign defaults
+# to manual CPC bidding and shows a "fix your bid" error until a price is entered.
+OBJECTIVE_TO_OPTIMIZATION_TARGET: dict[str, str] = {
+    "BRAND_AWARENESS": "MAX_IMPRESSION",
+    "WEBSITE_VISITS": "MAX_CLICK",
+    "ENGAGEMENT": "MAX_CLICK",
+    "LEAD_GENERATION": "MAX_LEAD",
+    "WEBSITE_CONVERSIONS": "MAX_CONVERSION",
+}
+
+# costType for auto-bidding is always CPM (LinkedIn charges per impression and
+# optimizes toward the objective's target event).
+AUTO_BID_COST_TYPE = "CPM"
+
 
 def campaign_objective(campaign: Campaign) -> str:
     return OBJECTIVE_TO_LINKEDIN[campaign.objective]
+
+
+def campaign_optimization_target(objective_type: str) -> str | None:
+    """The auto-bidding optimizationTargetType for a LinkedIn objectiveType.
+
+    None for an unmapped objective — the caller then omits the field (manual
+    bidding), rather than sending an invalid combination LinkedIn would reject.
+    """
+    return OBJECTIVE_TO_OPTIMIZATION_TARGET.get(objective_type)
 
 
 def money_to_linkedin_amount(amount: Any, currency: str) -> dict[str, str]:
@@ -111,9 +136,12 @@ def creative_content_reference(post_urn: str) -> dict[str, Any]:
 
 
 __all__ = [
+    "AUTO_BID_COST_TYPE",
     "DEFAULT_CAMPAIGN_TYPE",
     "OBJECTIVE_TO_LINKEDIN",
+    "OBJECTIVE_TO_OPTIMIZATION_TARGET",
     "campaign_objective",
+    "campaign_optimization_target",
     "campaign_run_schedule",
     "creative_content_reference",
     "flight_to_run_schedule",

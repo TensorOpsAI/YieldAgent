@@ -167,6 +167,7 @@ class LinkedInClient(BaseHttpClient):
         locale: dict[str, str],
         unit_cost: dict[str, str] | None = None,
         cost_type: str = "CPC",
+        optimization_target_type: str | None = None,
         status: str | None = None,
         offsite_delivery_enabled: bool = False,
         political_intent: str = "NOT_POLITICAL",
@@ -200,6 +201,10 @@ class LinkedInClient(BaseHttpClient):
             payload["totalBudget"] = total_budget
         if unit_cost is not None:
             payload["unitCost"] = unit_cost
+        # With an optimizationTargetType set, LinkedIn bids automatically
+        # (Maximum delivery) and no manual unitCost is required.
+        if optimization_target_type is not None:
+            payload["optimizationTargetType"] = optimization_target_type
         return await self._request(
             "POST",
             f"/adAccounts/{self.config.ad_account_id}/adCampaigns",
