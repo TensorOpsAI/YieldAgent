@@ -1,12 +1,12 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState } from "react";
+import type { Audience, Campaign, LineItem, Ad } from "@/lib/chat";
 
 type Facet = { label: string; key: string; values: string[] };
 
-function facets(audience: any): Facet[] {
-  const map: [string, string, any][] = [
+function facets(audience: Audience | undefined): Facet[] {
+  const map: [string, string, string[] | undefined][] = [
     ["Geos", "geos", audience?.geos],
     ["Seniorities", "seniorities", audience?.seniorities],
     ["Functions", "job_functions", audience?.job_functions],
@@ -16,8 +16,11 @@ function facets(audience: any): Facet[] {
     ["Company sizes", "company_sizes", audience?.company_sizes],
   ];
   return map
-    .filter(([, , v]) => Array.isArray(v) && v.length)
-    .map(([label, key, v]) => ({ label, key, values: v as string[] }));
+    .filter((entry): entry is [string, string, string[]] => {
+      const v = entry[2];
+      return Array.isArray(v) && v.length > 0;
+    })
+    .map(([label, key, values]) => ({ label, key, values }));
 }
 
 export function ProposalCard({
@@ -27,7 +30,7 @@ export function ProposalCard({
   onApprove,
   onReject,
 }: {
-  campaign: any;
+  campaign: Campaign;
   unresolved: Record<string, string[]>;
   awaiting: boolean;
   onApprove: () => void;
@@ -82,7 +85,7 @@ export function ProposalCard({
           </div>
         )}
 
-        {lineItems.map((li: any, i: number) => (
+        {lineItems.map((li: LineItem, i: number) => (
           <div key={i} className="mt-4 rounded-xl border border-line bg-paper p-4">
             <div className="flex items-center justify-between">
               <span className="text-[14px] font-medium text-ink">{li?.name}</span>
@@ -124,7 +127,7 @@ export function ProposalCard({
           <div className="mt-4">
             <div className="eyebrow mb-1.5">Ads</div>
             <div className="grid gap-1.5">
-              {ads.map((ad: any, i: number) => {
+              {ads.map((ad: Ad, i: number) => {
                 const c = ad?.creative ?? {};
                 const source = c.existing_post_urn
                   ? `post ${c.existing_post_urn}`

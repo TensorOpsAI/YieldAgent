@@ -1,8 +1,14 @@
 "use client";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from "react";
-import { streamChat, streamResume, type ChatEvent } from "@/lib/chat";
+import {
+  streamChat,
+  streamResume,
+  type ChatEvent,
+  type Campaign,
+  type CreatedResult,
+  type ToolArgs,
+} from "@/lib/chat";
 import { fetchProviders, type Provider } from "@/lib/api";
 import { ProposalCard } from "@/components/ProposalCard";
 import { ModelPicker } from "@/components/ModelPicker";
@@ -10,11 +16,14 @@ import { ModelPicker } from "@/components/ModelPicker";
 type Item =
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string }
-  | { kind: "tool"; name: string; args: any; summary: string | null; count: number }
-  | { kind: "proposal"; campaign: any; unresolved: Record<string, string[]> }
-  | { kind: "created"; result: any };
+  | { kind: "tool"; name: string; args: ToolArgs; summary: string | null; count: number }
+  | { kind: "proposal"; campaign: Campaign; unresolved: Record<string, string[]> }
+  | { kind: "created"; result: CreatedResult };
 
-function toolLabel(name: string, args: any): string {
+const asString = (v: unknown): string | undefined =>
+  typeof v === "string" ? v : undefined;
+
+function toolLabel(name: string, args: ToolArgs): string {
   switch (name) {
     case "list_ad_platforms":
       return "Checking available platforms";
@@ -24,10 +33,11 @@ function toolLabel(name: string, args: any): string {
       return "Looking up job functions";
     case "list_company_size_buckets":
       return "Loading company sizes";
-    case "search_targeting":
-      return `Searching ${args?.facet ?? "targeting"}${
-        args?.query ? ` for “${args.query}”` : ""
-      }`;
+    case "search_targeting": {
+      const facet = asString(args?.facet) ?? "targeting";
+      const query = asString(args?.query);
+      return `Searching ${facet}${query ? ` for “${query}”` : ""}`;
+    }
     case "preview_targeting":
       return "Resolving targeting on LinkedIn";
     case "propose_campaign":
@@ -337,8 +347,14 @@ export default function AgentConsole() {
           <div className="flex flex-1 items-center gap-2 rounded-xl border border-line bg-surface px-2 py-1.5 focus-within:border-brand">
             <input
               value={input}
+              aria-label="Describe your campaign"
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && send()}
+              onKeyDown={(e) => {
+                // Ignore Enter mid-IME-composition (CJK/diacritics) and Shift+Enter.
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  send();
+                }
+              }}
               placeholder={
                 !model
                   ? "Pick a model to start…"
@@ -352,6 +368,8 @@ export default function AgentConsole() {
             <button
               onClick={send}
               disabled={busy || !model}
+              aria-label="Send message"
+              aria-busy={busy}
               className="rounded-lg bg-brand px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-strong disabled:opacity-40"
             >
               {busy ? "…" : "Send"}

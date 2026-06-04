@@ -1,13 +1,60 @@
 import { API_BASE } from "./api";
 
+// Mirrors the backend domain model (yieldagent.domain.Campaign). Fields are
+// optional because a proposal/created payload may be partially shaped.
+export type Money = { amount: number; currency: string };
+export type Flight = { start_date: string; end_date: string };
+export type Audience = {
+  description?: string;
+  geos?: string[];
+  seniorities?: string[];
+  job_functions?: string[];
+  industries?: string[];
+  job_titles?: string[];
+  skills?: string[];
+  company_sizes?: string[];
+};
+export type LineItem = {
+  name?: string;
+  budget?: Money;
+  flight?: Flight;
+  targeting?: { audience?: Audience };
+};
+export type Creative = {
+  name?: string;
+  headline?: string;
+  primary_text?: string;
+  landing_url?: string;
+  existing_post_urn?: string;
+};
+export type Ad = { name?: string; line_item_name?: string; creative?: Creative };
+export type Campaign = {
+  name?: string;
+  objective?: string;
+  line_items?: LineItem[];
+  ads?: Ad[];
+};
+export type CreatedResult = {
+  created?: boolean;
+  campaign_id?: string;
+  group_urn?: string;
+  lcm_url?: string;
+  error?: string;
+  ad_ids?: string[];
+};
+export type ToolArgs = Record<string, unknown>;
+
 // Mirrors the backend SSE contract (api/routes/chat.py).
 export type ChatEvent =
   | { event: "thread"; data: { thread_id: string } }
   | { event: "token"; data: { text: string } }
-  | { event: "tool_call"; data: { name: string; args: unknown } }
+  | { event: "tool_call"; data: { name: string; args: ToolArgs } }
   | { event: "tool_result"; data: { name: string; summary: string } }
-  | { event: "proposal"; data: { campaign: unknown; unresolved?: Record<string, string[]> } }
-  | { event: "created"; data: { result: unknown } }
+  | {
+      event: "proposal";
+      data: { campaign: Campaign; unresolved?: Record<string, string[]> };
+    }
+  | { event: "created"; data: { result: CreatedResult } }
   | { event: "error"; data: { message: string } }
   | { event: "done"; data: Record<string, never> };
 
