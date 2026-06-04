@@ -13,7 +13,9 @@ These wrap the existing, tested LinkedIn integration:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from langchain_core.tools import tool
 from langgraph.types import interrupt
@@ -30,6 +32,7 @@ from yieldagent.integrations.linkedin.targeting import (
     FACET_TITLES,
     TargetingResolver,
 )
+from yieldagent.store import campaigns as store
 
 _SEARCHABLE_FACETS = {
     "industries": FACET_INDUSTRIES,
@@ -166,21 +169,60 @@ async def propose_campaign(campaign: dict[str, Any]) -> str:
     return f"Operator rejected the draft ({reason}). Ask what they want to change."
 
 
+def _audience_summary(campaign: dict[str, Any]) -> dict[str, Any]:
+    """A compact targeting snapshot (first line item's audience) for the dashboard."""
+    line_items = campaign.get("line_items") or []
+    if not line_items:
+        return {}
+    return line_items[0].get("targeting", {}).get("audience", {})
+
+
+def _lcm_url(ad_account_id: str) -> str:
+    return f"https://www.linkedin.com/campaignmanager/accounts/{ad_account_id}/campaigns"
+
+
 @tool
 async def create_linkedin_draft(campaign: dict[str, Any]) -> dict[str, Any]:
-    """Create the approved campaign as a DRAFT on LinkedIn. Only call after approval.
+    """Create the approved campaign as a DRAFT on LinkedIn and save it. Only call
+    after propose_campaign returned an approval.
 
-    M1: stubbed (returns synthesized ids, nothing is sent to LinkedIn). M2 wires
-    this to the real publish flow and persists the result.
+    Publishes the whole campaign (group → campaigns → creatives) as DRAFT — the
+    client refuses ACTIVE, so nothing spends until a manual activation in Campaign
+    Manager — then persists it so it shows on the dashboard.
     """
     issues = campaign_issues(campaign)
     if issues:
         return {"error": "Campaign is incomplete; cannot create.", "issues": issues}
+
+    # Imported lazily: pulls in the MCP server module only when actually creating.
+    from yieldagent.integrations.linkedin import server as li_server
+
+    result = await li_server.publish_draft_campaign(campaign)
+    config = LinkedInConfig.from_env()
+    group_id = result.get("campaign_id")
+    lcm_url = _lcm_url(config.ad_account_id)
+
+    store.save(
+        {
+            "id": uuid4().hex,
+            "created_at": datetime.now(UTC).isoformat(),
+            "platform": "linkedin",
+            "name": campaign.get("name", "Untitled"),
+            "objective": campaign.get("objective", ""),
+            "status": "DRAFT",
+            "group_urn": result.get("campaign_group_urn"),
+            "lcm_url": lcm_url,
+            "targeting": _audience_summary(campaign),
+            "unresolved": result.get("notes", {}).get("unresolved_b2b_targeting", {}),
+            "payload": {"campaign": campaign, "result": result},
+        }
+    )
     return {
-        "stub": True,
-        "campaign_id": "dryrun_group_0",
-        "name": campaign.get("name", "Untitled"),
-        "note": "M1 stub — no LinkedIn write yet (M2 makes this real).",
+        "created": True,
+        "campaign_id": group_id,
+        "group_urn": result.get("campaign_group_urn"),
+        "lcm_url": lcm_url,
+        "ad_ids": [a.get("id") for a in result.get("ads", [])],
     }
 
 

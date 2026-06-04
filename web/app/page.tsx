@@ -1,13 +1,36 @@
-import Link from "next/link";
+"use client";
 
-const STATS = [
-  { label: "Tracked spend", value: "—", hint: "n/a for drafts" },
-  { label: "Draft campaigns", value: "0" },
-  { label: "Pending approvals", value: "0" },
-  { label: "Connections", value: "1" },
-];
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import {
+  fetchCampaigns,
+  fetchSummary,
+  type CampaignRow,
+  type Summary,
+} from "@/lib/api";
+
+function facetChips(targeting: Record<string, string[]>): string[] {
+  return Object.values(targeting ?? {})
+    .flat()
+    .slice(0, 4);
+}
 
 export default function Dashboard() {
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
+
+  useEffect(() => {
+    fetchSummary().then(setSummary).catch(() => undefined);
+    fetchCampaigns().then(setCampaigns).catch(() => undefined);
+  }, []);
+
+  const stats = [
+    { label: "Tracked spend", value: "—", hint: "n/a for drafts" },
+    { label: "Draft campaigns", value: String(summary?.drafts ?? 0) },
+    { label: "Pending approvals", value: "0" },
+    { label: "Campaigns created", value: String(summary?.campaigns ?? 0) },
+  ];
+
   return (
     <div className="mx-auto max-w-6xl space-y-7 px-7 py-8">
       <div>
@@ -16,19 +39,15 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {STATS.map((s, i) => (
+        {stats.map((s, i) => (
           <div
             key={s.label}
             className="rise rounded-xl border border-line bg-surface p-4"
             style={{ animationDelay: `${i * 60}ms` }}
           >
             <div className="text-[12px] text-muted">{s.label}</div>
-            <div className="nums mt-2 text-3xl font-medium text-ink">
-              {s.value}
-            </div>
-            {s.hint && (
-              <div className="mt-1 text-[11px] text-faint">{s.hint}</div>
-            )}
+            <div className="nums mt-2 text-3xl font-medium text-ink">{s.value}</div>
+            {s.hint && <div className="mt-1 text-[11px] text-faint">{s.hint}</div>}
           </div>
         ))}
       </div>
@@ -47,16 +66,11 @@ export default function Dashboard() {
             Describe a campaign in plain language — the agent plans, targets, and
             drafts it on LinkedIn.
           </h2>
-          <p className="mt-2 max-w-md text-[13px] text-muted">
-            It pulls real targeting options, never guesses, and waits for your
-            approval before anything is created.
-          </p>
           <Link
             href="/agent"
             className="mt-5 inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-[13px] font-medium text-paper transition-colors hover:bg-ink-soft"
           >
-            New campaign
-            <span className="text-brand">→</span>
+            New campaign <span className="text-brand">→</span>
           </Link>
         </div>
       </div>
@@ -67,14 +81,55 @@ export default function Dashboard() {
       >
         <div className="flex items-center justify-between">
           <span className="eyebrow">Campaigns</span>
-          <span className="nums text-[12px] text-faint">0 total</span>
+          <span className="nums text-[12px] text-faint">
+            {campaigns.length} total
+          </span>
         </div>
-        <div className="mt-6 grid place-items-center rounded-xl border border-dashed border-line py-12 text-center">
-          <div className="text-[13px] text-muted">No campaigns created yet.</div>
-          <Link href="/agent" className="mt-1 text-[13px] font-medium text-brand-strong">
-            Start one with the agent →
-          </Link>
-        </div>
+
+        {campaigns.length === 0 ? (
+          <div className="mt-6 grid place-items-center rounded-xl border border-dashed border-line py-12 text-center">
+            <div className="text-[13px] text-muted">No campaigns created yet.</div>
+            <Link href="/agent" className="mt-1 text-[13px] font-medium text-brand-strong">
+              Start one with the agent →
+            </Link>
+          </div>
+        ) : (
+          <div className="mt-4 divide-y divide-line">
+            {campaigns.map((c) => (
+              <div key={c.id} className="flex items-center gap-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-medium text-ink">{c.name}</span>
+                    <span className="rounded bg-brand-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-strong">
+                      {c.status}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap gap-1">
+                    <span className="nums text-[11px] text-faint">{c.objective}</span>
+                    {facetChips(c.targeting).map((v) => (
+                      <span
+                        key={v}
+                        className="rounded bg-paper px-1.5 py-0.5 text-[11px] text-muted ring-1 ring-line"
+                      >
+                        {v}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                {c.lcm_url && (
+                  <a
+                    href={c.lcm_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 text-[12px] font-medium text-brand-strong hover:underline"
+                  >
+                    Campaign Manager →
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -241,8 +241,19 @@ export default function AgentConsole() {
               >
                 <span className="text-base">✓</span>
                 <span>
-                  Draft created.
-                  {it.result?.stub ? " (Stub — not yet sent to LinkedIn.)" : ""}
+                  Draft created on LinkedIn.{" "}
+                  {it.result?.lcm_url ? (
+                    <a
+                      href={it.result.lcm_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold underline"
+                    >
+                      Open in Campaign Manager →
+                    </a>
+                  ) : it.result?.error ? (
+                    <span className="text-amber-700">{it.result.error}</span>
+                  ) : null}
                 </span>
               </div>
             );

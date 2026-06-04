@@ -28,3 +28,28 @@ export async function fetchAdPlatforms(): Promise<AdPlatform[]> {
   if (!res.ok) throw new Error("Failed to fetch ad platforms");
   return res.json();
 }
+
+export type CampaignRow = {
+  id: string;
+  created_at: string;
+  platform: string;
+  name: string;
+  objective: string;
+  status: string;
+  lcm_url: string | null;
+  targeting: Record<string, string[]>;
+};
+
+export type Summary = { campaigns: number; drafts: number };
+
+export async function fetchCampaigns(): Promise<CampaignRow[]> {
+  const res = await fetch(`${API_BASE}/api/campaigns`);
+  if (!res.ok) throw new Error("Failed to fetch campaigns");
+  return res.json();
+}
+
+export async function fetchSummary(): Promise<Summary> {
+  const res = await fetch(`${API_BASE}/api/summary`);
+  if (!res.ok) throw new Error("Failed to fetch summary");
+  return res.json();
+}

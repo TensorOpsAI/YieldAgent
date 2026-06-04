@@ -8,6 +8,7 @@ created.
 
 from __future__ import annotations
 
+import ast
 import json
 from collections.abc import AsyncIterator
 from typing import Any
@@ -22,12 +23,18 @@ Event = tuple[str, dict[str, Any]]
 
 
 def _coerce(content: Any) -> Any:
-    """Tool results arrive as strings; try to recover the original JSON object."""
+    """Tool results arrive as strings; recover the original object if we can.
+
+    Handles both JSON (double-quoted) and Python-repr (single-quoted) dicts, so a
+    dict-returning tool's result is usable by the UI.
+    """
     if isinstance(content, str):
-        try:
-            return json.loads(content)
-        except (ValueError, TypeError):
-            return content
+        for parse in (json.loads, ast.literal_eval):
+            try:
+                return parse(content)
+            except (ValueError, SyntaxError, TypeError):
+                continue
+        return content
     return content
 
 
