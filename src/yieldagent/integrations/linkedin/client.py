@@ -298,6 +298,20 @@ class LinkedInClient(BaseHttpClient):
         key = quote(str(post_urn), safe="")
         await self._request("DELETE", f"/posts/{key}")
 
+    async def get_post(self, post_urn: str) -> dict[str, Any]:
+        """Fetch a Post's content (commentary + article title/source/thumbnail).
+
+        Used to preview the real creative behind an `existing_post_urn` before the
+        operator approves — so they see the ad, not an opaque id.
+        """
+        key = quote(str(post_urn), safe="")
+        return await self._request("GET", f"/posts/{key}")
+
+    async def get_image(self, image_urn: str) -> dict[str, Any]:
+        """Resolve an `urn:li:image:…` to a temporary `downloadUrl` for display."""
+        key = quote(str(image_urn), safe="")
+        return await self._request("GET", f"/images/{key}")
+
     async def typeahead_targeting_entities(self, *, facet: str, query: str) -> list[dict[str, Any]]:
         """Search a targeting facet's open taxonomy (industries, titles, skills).
 

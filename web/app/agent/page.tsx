@@ -7,6 +7,7 @@ import {
   type ChatEvent,
   type Campaign,
   type CreatedResult,
+  type Previews,
   type ToolArgs,
 } from "@/lib/chat";
 import { fetchProviders, type Provider } from "@/lib/api";
@@ -17,7 +18,12 @@ type Item =
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string }
   | { kind: "tool"; name: string; args: ToolArgs; summary: string | null; count: number }
-  | { kind: "proposal"; campaign: Campaign; unresolved: Record<string, string[]> }
+  | {
+      kind: "proposal";
+      campaign: Campaign;
+      unresolved: Record<string, string[]>;
+      previews: Previews;
+    }
   | { kind: "created"; result: CreatedResult };
 
 const asString = (v: unknown): string | undefined =>
@@ -138,6 +144,7 @@ export default function AgentConsole() {
           kind: "proposal",
           campaign: ev.data.campaign,
           unresolved: ev.data.unresolved ?? {},
+          previews: ev.data.previews ?? {},
         });
         break;
       case "created":
@@ -301,6 +308,7 @@ export default function AgentConsole() {
                   key={i}
                   campaign={it.campaign}
                   unresolved={it.unresolved}
+                  previews={it.previews}
                   awaiting={awaiting && i === items.length - 1}
                   onApprove={() => decide(true)}
                   onReject={() => decide(false)}

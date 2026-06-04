@@ -137,6 +137,67 @@ async def _unresolved_targeting(campaign: dict[str, Any]) -> dict[str, list[str]
     return merged
 
 
+async def _preview_existing_post(client: Any, post_urn: str) -> dict[str, Any]:
+    """Build a creative preview from a hand-published post (best-effort)."""
+    preview: dict[str, Any] = {
+        "source": "existing_post",
+        "post_urn": post_urn,
+        "headline": None,
+        "text": None,
+        "url": None,
+        "image_url": None,
+    }
+    try:
+        post = await client.get_post(post_urn)
+    except Exception:  # noqa: BLE001 — preview is best-effort, never blocks proposing
+        return preview
+    preview["text"] = post.get("commentary")
+    article = (post.get("content") or {}).get("article") or {}
+    preview["headline"] = article.get("title")
+    preview["url"] = article.get("source")
+    thumbnail = article.get("thumbnail")
+    if thumbnail:
+        try:
+            image = await client.get_image(thumbnail)
+            preview["image_url"] = image.get("downloadUrl")
+        except Exception:  # noqa: BLE001 — image is optional
+            pass
+    return preview
+
+
+async def _ad_previews(campaign: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Build a display preview per ad so the operator sees the real creative.
+
+    For an existing post, fetch its content from LinkedIn; for ad copy, use the
+    fields the operator gave. Keyed by ad name. Best-effort: any API failure just
+    yields a sparser preview — it never blocks the proposal.
+    """
+    ads = campaign.get("ads") or []
+    if not ads:
+        return {}
+    previews: dict[str, dict[str, Any]] = {}
+    try:
+        async with client_from_env() as client:
+            for ad in ads:
+                name = ad.get("name") or ""
+                creative = ad.get("creative") or {}
+                if creative.get("existing_post_urn"):
+                    previews[name] = await _preview_existing_post(
+                        client, creative["existing_post_urn"]
+                    )
+                elif creative.get("landing_url"):
+                    previews[name] = {
+                        "source": "ad_copy",
+                        "headline": creative.get("headline"),
+                        "text": creative.get("primary_text"),
+                        "url": creative.get("landing_url"),
+                        "image_url": None,
+                    }
+    except Exception:  # noqa: BLE001 — preview is best-effort
+        return previews
+    return previews
+
+
 @tool
 async def propose_campaign(campaign: dict[str, Any]) -> str:
     """Present the finished campaign draft to the operator and wait for approval.
@@ -156,8 +217,14 @@ async def propose_campaign(campaign: dict[str, Any]) -> str:
             + "\n- ".join(issues)
         )
     unresolved = await _unresolved_targeting(campaign)
+    previews = await _ad_previews(campaign)
     decision = interrupt(
-        {"type": "proposal", "campaign": campaign, "unresolved": unresolved}
+        {
+            "type": "proposal",
+            "campaign": campaign,
+            "unresolved": unresolved,
+            "previews": previews,
+        }
     )
     if decision.get("approved"):
         return "Operator approved. Call create_linkedin_draft with the same campaign."
