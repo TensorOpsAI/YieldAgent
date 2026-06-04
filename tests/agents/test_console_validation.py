@@ -64,14 +64,8 @@ def test_invalid_budget_is_flagged() -> None:
     assert campaign_issues(data)  # pydantic catches it
 
 
-def test_budget_over_cap_is_flagged() -> None:
+def test_large_budget_is_allowed() -> None:
+    # No cap: a big budget is fine — the operator reviews it and it stays DRAFT.
     data = _complete()
-    data["line_items"][0]["budget"]["amount"] = 999_999
-    assert any("safety cap" in i for i in campaign_issues(data))
-
-
-def test_budget_cap_is_env_configurable(monkeypatch) -> None:
-    monkeypatch.setenv("YIELDAGENT_MAX_BUDGET", "10000")
-    data = _complete()
-    data["line_items"][0]["budget"]["amount"] = 8000  # under the raised cap
+    data["line_items"][0]["budget"]["amount"] = 500_000
     assert campaign_issues(data) == []

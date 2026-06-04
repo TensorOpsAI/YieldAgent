@@ -10,28 +10,20 @@ present an incomplete draft, so the agent is forced to ask for what's missing.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from pydantic import ValidationError
 
 from yieldagent.domain import Campaign
 
-# Safety ceiling on any single budget figure (currency-agnostic for now — a blunt
-# guard against accidental large spend). Override with YIELDAGENT_MAX_BUDGET.
-DEFAULT_MAX_BUDGET = 1000.0
-
-
-def max_budget() -> float:
-    raw = os.environ.get("YIELDAGENT_MAX_BUDGET")
-    try:
-        return float(raw) if raw else DEFAULT_MAX_BUDGET
-    except ValueError:
-        return DEFAULT_MAX_BUDGET
-
 
 def campaign_issues(data: dict[str, Any]) -> list[str]:
-    """Return human-readable issues blocking creation; empty list means ready."""
+    """Return human-readable issues blocking creation; empty list means ready.
+
+    No budget ceiling: the operator always reviews the budget in the proposal,
+    and nothing spends until a manual activation in Campaign Manager — so a hard
+    cap would only add friction.
+    """
     try:
         campaign = Campaign.model_validate(data)
     except ValidationError as exc:
@@ -45,19 +37,6 @@ def campaign_issues(data: dict[str, Any]) -> list[str]:
         issues.append("Add at least one line item (budget, flight dates, targeting).")
     if not campaign.ads:
         issues.append("Add at least one ad / creative.")
-
-    cap = max_budget()
-    if campaign.lifetime_budget and float(campaign.lifetime_budget.amount) > cap:
-        issues.append(
-            f"Lifetime budget {campaign.lifetime_budget.amount} exceeds the safety "
-            f"cap of {cap:g}. Lower it, or ask an admin to raise YIELDAGENT_MAX_BUDGET."
-        )
-    for li in campaign.line_items:
-        if float(li.budget.amount) > cap:
-            issues.append(
-                f"Line item {li.name!r} budget {li.budget.amount} exceeds the safety "
-                f"cap of {cap:g}. Lower it, or ask an admin to raise the cap."
-            )
 
     line_item_names = {li.name for li in campaign.line_items}
     for ad in campaign.ads:
