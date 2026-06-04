@@ -32,8 +32,10 @@ def load_dotenv(path: Path | None = None, *, override: bool = False) -> Path | N
     """Load KEY=VALUE pairs from `.env` into `os.environ`.
 
     This intentionally handles the simple format used by this repo without
-    adding a runtime dependency. Existing shell variables win unless
-    ``override=True`` is passed.
+    adding a runtime dependency. A non-empty existing shell variable wins unless
+    ``override=True`` is passed; an existing but *empty* variable is treated as
+    unset and filled from `.env` (so e.g. an inherited `ANTHROPIC_API_KEY=`
+    doesn't silently shadow a real key in the file).
     """
     dotenv_path = path or _find_dotenv()
     if dotenv_path is None:
@@ -51,7 +53,7 @@ def load_dotenv(path: Path | None = None, *, override: bool = False) -> Path | N
         key = key.strip()
         if not key or not key.replace("_", "").isalnum() or key[0].isdigit():
             continue
-        if override or key not in os.environ:
+        if override or not os.environ.get(key):
             os.environ[key] = _parse_value(raw_value)
 
     return dotenv_path
