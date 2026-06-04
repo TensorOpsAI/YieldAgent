@@ -8,30 +8,15 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import interrupt
 
-from yieldagent.agents.defaults import DEFAULT_MODEL
+from yieldagent.agents.defaults import DEFAULT_MODEL, resolve_model_name
 from yieldagent.domain import Brief, Campaign, CampaignStatus
 
 from .prompts import PARSE_BRIEF_SYSTEM, PLAN_CAMPAIGN_SYSTEM
 from .state import AgentState, AuditEntry
 
-# DEFAULT_MODEL is re-exported (it lives in the neutral defaults module) so
-# existing `nodes.DEFAULT_MODEL` references keep working.
-
-
-def _resolve_model_name(model_name: str) -> str:
-    """Disambiguate bare `gemini-*` to Google AI Studio.
-
-    LangChain's init_chat_model routes bare `gemini-*` to Vertex AI by default,
-    which needs full GCP setup. Users with just a `GOOGLE_API_KEY` want the
-    Gemini API (Google AI Studio) — the `google_genai` provider — so we make
-    that choice explicit. Callers who want Vertex can still pass
-    `google_vertexai:gemini-...`.
-    """
-    if ":" in model_name:
-        return model_name
-    if model_name.startswith("gemini-"):
-        return f"google_genai:{model_name}"
-    return model_name
+# DEFAULT_MODEL and the model-name resolver are re-exported (they live in the
+# neutral defaults module) so existing `nodes.*` references keep working.
+_resolve_model_name = resolve_model_name
 
 
 def _audit(state: AgentState, entry: AuditEntry) -> list[AuditEntry]:

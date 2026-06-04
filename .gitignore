@@ -14,7 +14,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Anchored to the repo root so it ignores Python build output but NOT the
+# Next.js app's web/lib/ (its source lives there).
+/lib/
 lib64/
 parts/
 sdist/
