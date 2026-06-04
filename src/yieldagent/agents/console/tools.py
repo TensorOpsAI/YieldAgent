@@ -18,6 +18,7 @@ from typing import Any
 from langchain_core.tools import tool
 from langgraph.types import interrupt
 
+from yieldagent.agents.console.validation import campaign_issues
 from yieldagent.domain import Audience
 from yieldagent.integrations.linkedin.client import LinkedInClient
 from yieldagent.integrations.linkedin.config import LinkedInConfig
@@ -107,10 +108,19 @@ async def preview_targeting(audience: dict[str, Any]) -> dict[str, Any]:
 def propose_campaign(campaign: dict[str, Any]) -> str:
     """Present the finished campaign draft to the operator and wait for approval.
 
-    Call this once the plan is complete (name, objective, line items with
-    targeting, ads). Do NOT call create_linkedin_draft until this returns an
-    approval. `campaign` is a yieldagent Campaign dict.
+    First validates that the draft is complete (objective, line items with
+    budget/flight/targeting, ads with a creative source). If anything is missing
+    it is returned for you to ask the operator about — the draft is NOT shown
+    until it's complete. Do NOT call create_linkedin_draft until this approves.
+    `campaign` is a yieldagent Campaign dict.
     """
+    issues = campaign_issues(campaign)
+    if issues:
+        return (
+            "The draft isn't ready to propose. Resolve these — ask the operator "
+            "for anything missing, then call propose_campaign again:\n- "
+            + "\n- ".join(issues)
+        )
     decision = interrupt({"type": "proposal", "campaign": campaign})
     if decision.get("approved"):
         return "Operator approved. Call create_linkedin_draft with the same campaign."
@@ -125,11 +135,13 @@ async def create_linkedin_draft(campaign: dict[str, Any]) -> dict[str, Any]:
     M1: stubbed (returns synthesized ids, nothing is sent to LinkedIn). M2 wires
     this to the real publish flow and persists the result.
     """
-    name = campaign.get("name", "Untitled")
+    issues = campaign_issues(campaign)
+    if issues:
+        return {"error": "Campaign is incomplete; cannot create.", "issues": issues}
     return {
         "stub": True,
         "campaign_id": "dryrun_group_0",
-        "name": name,
+        "name": campaign.get("name", "Untitled"),
         "note": "M1 stub — no LinkedIn write yet (M2 makes this real).",
     }
 
