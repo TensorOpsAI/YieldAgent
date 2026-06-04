@@ -149,6 +149,14 @@ export default function AgentConsole() {
     if (!text || busy || !model) return;
     setInput("");
     push({ kind: "user", text });
+    // If a proposal is awaiting a decision, the graph is paused inside
+    // propose_campaign — a fresh run() would corrupt its history. Route the
+    // typed message as feedback so the agent revises and re-proposes.
+    if (awaiting && threadId.current) {
+      setAwaiting(false);
+      await consume(streamResume(threadId.current, false, text, model));
+      return;
+    }
     await consume(streamChat(text, threadId.current, model));
   }
 
@@ -311,7 +319,7 @@ export default function AgentConsole() {
                 !model
                   ? "Pick a model to start…"
                   : awaiting
-                    ? "Approve or reject the draft above…"
+                    ? "Approve, reject, or type a change…"
                     : "Describe your campaign…"
               }
               disabled={busy || !model}

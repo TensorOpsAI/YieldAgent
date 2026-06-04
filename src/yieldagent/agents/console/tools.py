@@ -165,8 +165,14 @@ async def propose_campaign(campaign: dict[str, Any]) -> str:
     )
     if decision.get("approved"):
         return "Operator approved. Call create_linkedin_draft with the same campaign."
-    reason = decision.get("reason") or "no reason given"
-    return f"Operator rejected the draft ({reason}). Ask what they want to change."
+    reason = (decision.get("reason") or "").strip()
+    if reason:
+        return (
+            f'Operator did not approve. Their feedback: "{reason}". Apply it and '
+            "call propose_campaign again with the revised draft — ask only if the "
+            "request is unclear. Never create without a fresh approval."
+        )
+    return "Operator rejected the draft. Ask what they want to change, then propose again."
 
 
 def _audience_summary(campaign: dict[str, Any]) -> dict[str, Any]:
