@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { streamChat, streamResume, type ChatEvent } from "@/lib/chat";
 import { fetchProviders, type Provider } from "@/lib/api";
 import { ProposalCard } from "@/components/ProposalCard";
+import { ModelPicker } from "@/components/ModelPicker";
 
 type Item =
   | { kind: "user"; text: string }
@@ -28,7 +29,15 @@ export default function AgentConsole() {
     .flatMap((p) => p.models);
 
   useEffect(() => {
-    fetchProviders().then(setProviders).catch(() => undefined);
+    fetchProviders()
+      .then((ps) => {
+        setProviders(ps);
+        // Default to a sensible model: prefer a fast Gemini, else the first available.
+        const available = ps.filter((p) => p.connected).flatMap((p) => p.models);
+        const preferred = available.find((m) => m === "gemini-3.5-flash") ?? available[0];
+        if (preferred) setModel((m) => m || preferred);
+      })
+      .catch(() => undefined);
   }, []);
 
   const push = (item: Item) => setItems((prev) => [...prev, item]);
@@ -114,32 +123,15 @@ export default function AgentConsole() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Model bar */}
+      {/* Status bar */}
       <div className="flex items-center gap-3 border-b border-line px-7 py-2.5">
         <span className="inline-flex items-center gap-1.5 rounded-md bg-paper px-2 py-1 text-[12px] font-medium text-ink ring-1 ring-line">
           <span className="h-1.5 w-1.5 rounded-full bg-brand" />
           LinkedIn
         </span>
-        <span className="eyebrow">Model</span>
-        <input
-          list="model-presets"
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          placeholder={availableModels.length ? "pick a model…" : "no provider connected"}
-          className="nums w-52 rounded-md border border-line bg-surface px-2.5 py-1 text-[13px] text-ink outline-none focus:border-brand"
-        />
-        <datalist id="model-presets">
-          {availableModels.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
         <div className="ml-auto flex items-center gap-3 text-[12px]">
           {providers.map((p) => (
-            <span
-              key={p.id}
-              title={p.reason ?? "connected"}
-              className="flex items-center gap-1.5"
-            >
+            <span key={p.id} title={p.reason ?? "connected"} className="flex items-center gap-1.5">
               <span
                 className={`h-1.5 w-1.5 rounded-full ${
                   p.connected ? "bg-brand" : "bg-faint/40"
@@ -263,28 +255,31 @@ export default function AgentConsole() {
 
       {/* Composer */}
       <div className="border-t border-line px-6 py-4">
-        <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-xl border border-line bg-surface px-2 py-1.5 focus-within:border-brand">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder={
-              !model
-                ? "Pick a model above to start…"
-                : awaiting
-                  ? "Approve or reject the draft above…"
-                  : "Describe your campaign…"
-            }
-            disabled={busy || !model}
-            className="flex-1 bg-transparent px-2 py-1.5 text-[15px] text-ink outline-none placeholder:text-faint disabled:opacity-60"
-          />
-          <button
-            onClick={send}
-            disabled={busy || !model}
-            className="rounded-lg bg-brand px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-strong disabled:opacity-40"
-          >
-            {busy ? "…" : "Send"}
-          </button>
+        <div className="mx-auto flex max-w-3xl items-center gap-2">
+          <ModelPicker models={availableModels} value={model} onChange={setModel} />
+          <div className="flex flex-1 items-center gap-2 rounded-xl border border-line bg-surface px-2 py-1.5 focus-within:border-brand">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && send()}
+              placeholder={
+                !model
+                  ? "Pick a model to start…"
+                  : awaiting
+                    ? "Approve or reject the draft above…"
+                    : "Describe your campaign…"
+              }
+              disabled={busy || !model}
+              className="flex-1 bg-transparent px-2 py-1.5 text-[15px] text-ink outline-none placeholder:text-faint disabled:opacity-60"
+            />
+            <button
+              onClick={send}
+              disabled={busy || !model}
+              className="rounded-lg bg-brand px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-strong disabled:opacity-40"
+            >
+              {busy ? "…" : "Send"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
