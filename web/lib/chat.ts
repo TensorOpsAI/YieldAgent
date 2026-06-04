@@ -36,6 +36,12 @@ async function* streamSSE(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `${path} failed (${res.status})${detail ? `: ${detail.slice(0, 200)}` : ""}`,
+    );
+  }
   if (!res.body) throw new Error(`No response body from ${path}`);
 
   const reader = res.body.getReader();

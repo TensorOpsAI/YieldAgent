@@ -1,4 +1,7 @@
+"use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+import { useState } from "react";
 
 type Facet = { label: string; key: string; values: string[] };
 
@@ -30,6 +33,13 @@ export function ProposalCard({
   onApprove: () => void;
   onReject: () => void;
 }) {
+  const [submitting, setSubmitting] = useState(false);
+  const decide = (fn: () => void) => {
+    if (submitting) return; // guard against double-submit (one approval only)
+    setSubmitting(true);
+    fn();
+  };
+
   const lineItems = campaign?.line_items ?? [];
   const ads = campaign?.ads ?? [];
   const unresolvedCount = Object.values(unresolved ?? {}).reduce(
@@ -138,14 +148,16 @@ export function ProposalCard({
         {awaiting && (
           <div className="mt-4 flex items-center gap-2">
             <button
-              onClick={onApprove}
-              className="rounded-lg bg-brand px-4 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-brand-strong"
+              onClick={() => decide(onApprove)}
+              disabled={submitting}
+              className="rounded-lg bg-brand px-4 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
             >
-              Approve &amp; create draft
+              {submitting ? "Creating…" : "Approve & create draft"}
             </button>
             <button
-              onClick={onReject}
-              className="rounded-lg border border-line px-4 py-2.5 text-[14px] font-medium text-muted transition-colors hover:border-ink/20 hover:text-ink"
+              onClick={() => decide(onReject)}
+              disabled={submitting}
+              className="rounded-lg border border-line px-4 py-2.5 text-[14px] font-medium text-muted transition-colors hover:border-ink/20 hover:text-ink disabled:opacity-50"
             >
               Reject
             </button>
