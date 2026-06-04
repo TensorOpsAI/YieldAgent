@@ -15,3 +15,16 @@ export async function fetchProviders(test = false): Promise<Provider[]> {
   if (!res.ok) throw new Error("Failed to fetch providers");
   return res.json();
 }
+
+export type AdPlatform = {
+  platform: string;
+  connected: boolean;
+  can_create: boolean;
+};
+
+/** Ad platforms and whether campaigns can be created on each. */
+export async function fetchAdPlatforms(): Promise<AdPlatform[]> {
+  const res = await fetch(`${API_BASE}/api/ad-platforms`);
+  if (!res.ok) throw new Error("Failed to fetch ad platforms");
+  return res.json();
+}
