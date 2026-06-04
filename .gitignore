@@ -225,3 +225,7 @@ __marimo__/
 # Internal Claude/agent scratch docs — debug prompts, API spelunking notes.
 # Kept locally for reference; never committed (may reference account/org IDs).
 docs/claude_docs/
+
+# console campaign store (SQLite)
+yieldagent.db
+*.db
