@@ -44,6 +44,12 @@ agent = [
     "langchain-anthropic>=0.3",
     "langchain-openai>=0.2",
 ]
+web = [
+    # FastAPI backend that serves the web console (chat SSE + dashboard REST).
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "sse-starlette>=2.0",
+]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
