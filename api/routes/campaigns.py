@@ -24,6 +24,14 @@ async def get_campaign(campaign_id: str) -> dict[str, Any]:
     return record
 
 
+@router.delete("/campaigns/{campaign_id}")
+async def delete_campaign(campaign_id: str) -> dict[str, bool]:
+    """Forget a campaign locally (dashboard view). Does not touch LinkedIn."""
+    if not campaigns.delete(campaign_id):
+        raise HTTPException(status_code=404, detail="campaign not found")
+    return {"deleted": True}
+
+
 @router.get("/summary")
 async def summary() -> dict[str, Any]:
     counts = campaigns.summary()
