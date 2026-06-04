@@ -29,16 +29,19 @@ export default function Connections() {
   const [adPlatforms, setAdPlatforms] = useState<AdPlatform[]>([]);
   const [testing, setTesting] = useState(false);
 
-  const load = (test = false) => {
-    setTesting(test);
-    fetchProviders(test)
+  // Used by the "Re-test keys" button; it legitimately toggles the spinner.
+  const retest = () => {
+    setTesting(true);
+    fetchProviders(true)
       .then(setProviders)
       .catch(() => undefined)
       .finally(() => setTesting(false));
   };
 
+  // Initial load: fetch without touching `testing` (avoids a synchronous
+  // setState in the effect body — the cached providers load fast).
   useEffect(() => {
-    load(false);
+    fetchProviders(false).then(setProviders).catch(() => undefined);
     fetchAdPlatforms().then(setAdPlatforms).catch(() => undefined);
   }, []);
 
@@ -50,7 +53,7 @@ export default function Connections() {
           <h1 className="mt-1 font-display text-3xl text-ink">Platform readiness</h1>
         </div>
         <button
-          onClick={() => load(true)}
+          onClick={retest}
           disabled={testing}
           className="rounded-lg border border-line bg-surface px-3.5 py-2 text-[13px] font-medium text-ink transition-colors hover:border-ink/20 disabled:opacity-50"
         >
