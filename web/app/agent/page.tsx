@@ -282,24 +282,31 @@ export default function AgentConsole() {
             return (
               <div
                 key={i}
-                className="rise flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft px-4 py-3 text-[14px] text-brand-strong"
+                className="rise rounded-xl border border-brand/30 bg-brand-soft px-4 py-3.5"
               >
-                <span className="text-base">✓</span>
-                <span>
-                  Draft created on LinkedIn.{" "}
-                  {it.result?.lcm_url ? (
-                    <a
-                      href={it.result.lcm_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-semibold underline"
-                    >
-                      Open in Campaign Manager →
-                    </a>
-                  ) : it.result?.error ? (
-                    <span className="text-amber-700">{it.result.error}</span>
-                  ) : null}
-                </span>
+                <div className="flex items-center gap-2 text-[14px] font-semibold text-brand-strong">
+                  <span className="grid h-5 w-5 place-items-center rounded-full bg-brand text-[11px] text-white">
+                    ✓
+                  </span>
+                  Draft created on LinkedIn
+                </div>
+                <p className="mt-1.5 pl-7 text-[13px] leading-relaxed text-muted">
+                  Saved as a <span className="font-medium text-ink">DRAFT</span> — it
+                  can&rsquo;t spend until you activate it manually in Campaign Manager.
+                  {it.result?.campaign_id && (
+                    <span className="nums"> Group {it.result.campaign_id}.</span>
+                  )}
+                </p>
+                {it.result?.lcm_url && (
+                  <a
+                    href={it.result.lcm_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-7 mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-brand-strong"
+                  >
+                    Open in Campaign Manager →
+                  </a>
+                )}
               </div>
             );
           })}
