@@ -1,85 +1,174 @@
 "use client";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useRef, useState } from "react";
-import { streamChat } from "@/lib/chat";
+import { streamChat, streamResume, type ChatEvent } from "@/lib/chat";
+import { ProposalCard } from "@/components/ProposalCard";
 
-type Msg = { role: "user" | "assistant"; text: string };
+type Item =
+  | { kind: "user"; text: string }
+  | { kind: "assistant"; text: string }
+  | { kind: "tool"; name: string; summary: string | null }
+  | { kind: "proposal"; campaign: any }
+  | { kind: "created"; result: any };
 
 export default function AgentConsole() {
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [awaiting, setAwaiting] = useState(false);
+  const threadId = useRef<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  async function send() {
-    const text = input.trim();
-    if (!text || busy) return;
-    setInput("");
-    setMessages((m) => [
-      ...m,
-      { role: "user", text },
-      { role: "assistant", text: "" },
-    ]);
+  const push = (item: Item) => setItems((prev) => [...prev, item]);
+  const scroll = () =>
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: 1e9 }));
+
+  function handle(ev: ChatEvent) {
+    switch (ev.event) {
+      case "thread":
+        threadId.current = ev.data.thread_id;
+        break;
+      case "token":
+        setItems((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.kind === "assistant") {
+            return [
+              ...prev.slice(0, -1),
+              { kind: "assistant", text: last.text + ev.data.text },
+            ];
+          }
+          return [...prev, { kind: "assistant", text: ev.data.text }];
+        });
+        break;
+      case "tool_call":
+        push({ kind: "tool", name: ev.data.name, summary: null });
+        break;
+      case "tool_result":
+        setItems((prev) => {
+          const idx = [...prev]
+            .reverse()
+            .findIndex((it) => it.kind === "tool" && it.summary === null);
+          if (idx === -1) return prev;
+          const real = prev.length - 1 - idx;
+          const copy = [...prev];
+          copy[real] = { kind: "tool", name: ev.data.name, summary: ev.data.summary };
+          return copy;
+        });
+        break;
+      case "proposal":
+        push({ kind: "proposal", campaign: ev.data.campaign });
+        setAwaiting(true);
+        break;
+      case "created":
+        push({ kind: "created", result: ev.data.result });
+        break;
+      case "error":
+        push({ kind: "assistant", text: `⚠️ ${ev.data.message}` });
+        break;
+    }
+    scroll();
+  }
+
+  async function consume(gen: AsyncGenerator<ChatEvent>) {
     setBusy(true);
     try {
-      for await (const ev of streamChat(text)) {
-        if (ev.event === "token") {
-          const t = ev.data.text;
-          setMessages((m) => {
-            const copy = [...m];
-            const last = copy[copy.length - 1];
-            copy[copy.length - 1] = { role: "assistant", text: last.text + t };
-            return copy;
-          });
-          scrollRef.current?.scrollTo({ top: 1e9 });
-        }
-      }
+      for await (const ev of gen) handle(ev);
     } catch {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", text: "[connection error — is the API running?]" },
-      ]);
+      push({ kind: "assistant", text: "⚠️ connection error — is the API running?" });
     } finally {
       setBusy(false);
     }
   }
 
+  async function send() {
+    const text = input.trim();
+    if (!text || busy) return;
+    setInput("");
+    push({ kind: "user", text });
+    await consume(streamChat(text, threadId.current));
+  }
+
+  async function decide(approved: boolean) {
+    if (!threadId.current) return;
+    setAwaiting(false);
+    await consume(streamResume(threadId.current, approved, approved ? "" : "rejected"));
+  }
+
   return (
     <div className="flex h-full flex-col">
-      <div ref={scrollRef} className="flex-1 space-y-4 overflow-auto p-6">
-        {messages.length === 0 && (
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-6">
+        {items.length === 0 && (
           <div className="text-sm text-gray-400">
-            Describe the campaign you want to create…
+            Describe the campaign you want to create — e.g. &ldquo;brand awareness
+            for founders &amp; CTOs in New York and London, large companies&rdquo;.
           </div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={m.role === "user" ? "text-right" : ""}>
+        {items.map((it, i) => {
+          if (it.kind === "user")
+            return (
+              <div key={i} className="text-right">
+                <div className="inline-block max-w-[75%] whitespace-pre-wrap rounded-2xl bg-emerald-600 px-4 py-2 text-sm text-white">
+                  {it.text}
+                </div>
+              </div>
+            );
+          if (it.kind === "assistant")
+            return (
+              <div key={i}>
+                <div className="inline-block max-w-[75%] whitespace-pre-wrap rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-900">
+                  {it.text || "…"}
+                </div>
+              </div>
+            );
+          if (it.kind === "tool")
+            return (
+              <div key={i} className="text-xs text-gray-500">
+                <span className="font-mono">⚙ {it.name}</span>
+                {it.summary === null ? (
+                  <span className="text-gray-400"> …</span>
+                ) : (
+                  <span className="text-gray-400"> → {it.summary}</span>
+                )}
+              </div>
+            );
+          if (it.kind === "proposal")
+            return (
+              <ProposalCard
+                key={i}
+                campaign={it.campaign}
+                awaiting={awaiting && i === items.length - 1}
+                onApprove={() => decide(true)}
+                onReject={() => decide(false)}
+              />
+            );
+          return (
             <div
-              className={`inline-block max-w-[70%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm ${
-                m.role === "user"
-                  ? "bg-emerald-600 text-white"
-                  : "border border-gray-200 bg-white text-gray-900"
-              }`}
+              key={i}
+              className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"
             >
-              {m.text || (busy ? "…" : "")}
+              ✓ Draft created.{" "}
+              {it.result?.stub ? "(M1 stub — not yet on LinkedIn.)" : ""}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
       <div className="flex gap-2 border-t border-gray-200 bg-white p-4">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="Message the agent…"
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+          placeholder={awaiting ? "Approve or reject the draft above…" : "Message the agent…"}
+          disabled={busy}
+          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 disabled:bg-gray-50"
         />
         <button
           onClick={send}
           disabled={busy}
           className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
         >
-          Send
+          {busy ? "…" : "Send"}
         </button>
       </div>
     </div>
