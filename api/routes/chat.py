@@ -8,15 +8,21 @@ only the producer behind `_stream` changes.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from yieldagent.agents.console.chat import stream_reply
+
 router = APIRouter()
+
+# In-memory chat history per thread (M0.5). A real store / checkpointer lands
+# with the M1 agent; this is enough to hold a single demo conversation.
+_HISTORY: dict[str, list[BaseMessage]] = {}
 
 
 class ChatRequest(BaseModel):
@@ -34,19 +40,28 @@ def _event(name: str, payload: dict) -> dict[str, str]:
     return {"event": name, "data": json.dumps(payload)}
 
 
-async def _echo_stream(req: ChatRequest) -> AsyncIterator[dict[str, str]]:
+async def _agent_stream(req: ChatRequest) -> AsyncIterator[dict[str, str]]:
     thread_id = req.thread_id or "thread-demo"
     yield _event("thread", {"thread_id": thread_id})
-    reply = f"(echo) you said: {req.message}"
-    for word in reply.split():
-        await asyncio.sleep(0.04)
-        yield _event("token", {"text": word + " "})
-    yield _event("done", {})
+
+    history = _HISTORY.setdefault(thread_id, [])
+    history.append(HumanMessage(content=req.message))
+
+    reply = ""
+    try:
+        async for delta in stream_reply(history):
+            reply += delta
+            yield _event("token", {"text": delta})
+    except Exception as exc:  # noqa: BLE001 — surface model/config errors to the UI
+        yield _event("error", {"message": str(exc)})
+    finally:
+        history.append(AIMessage(content=reply))
+        yield _event("done", {})
 
 
 @router.post("/chat")
 async def chat(req: ChatRequest) -> EventSourceResponse:
-    return EventSourceResponse(_echo_stream(req))
+    return EventSourceResponse(_agent_stream(req))
 
 
 @router.post("/chat/resume")

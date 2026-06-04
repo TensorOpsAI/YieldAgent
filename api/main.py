@@ -10,6 +10,8 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from yieldagent.env import load_dotenv
+
 from .routes import chat
 
 # The Next.js dev server runs here; widen for deployment later.
@@ -17,6 +19,7 @@ ALLOWED_ORIGINS = ["http://localhost:3000"]
 
 
 def create_app() -> FastAPI:
+    load_dotenv()  # pick up GOOGLE_API_KEY / OPENAI_API_KEY / etc.
     app = FastAPI(title="YieldAgent Console API")
     app.add_middleware(
         CORSMiddleware,
