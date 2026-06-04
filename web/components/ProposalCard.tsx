@@ -1,33 +1,44 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function facets(audience: any): { label: string; values: string[] }[] {
-  const map: [string, any][] = [
-    ["Geos", audience?.geos],
-    ["Seniorities", audience?.seniorities],
-    ["Functions", audience?.job_functions],
-    ["Industries", audience?.industries],
-    ["Titles", audience?.job_titles],
-    ["Skills", audience?.skills],
-    ["Company sizes", audience?.company_sizes],
+type Facet = { label: string; key: string; values: string[] };
+
+function facets(audience: any): Facet[] {
+  const map: [string, string, any][] = [
+    ["Geos", "geos", audience?.geos],
+    ["Seniorities", "seniorities", audience?.seniorities],
+    ["Functions", "job_functions", audience?.job_functions],
+    ["Industries", "industries", audience?.industries],
+    ["Titles", "job_titles", audience?.job_titles],
+    ["Skills", "skills", audience?.skills],
+    ["Company sizes", "company_sizes", audience?.company_sizes],
   ];
   return map
-    .filter(([, v]) => Array.isArray(v) && v.length)
-    .map(([label, v]) => ({ label, values: v as string[] }));
+    .filter(([, , v]) => Array.isArray(v) && v.length)
+    .map(([label, key, v]) => ({ label, key, values: v as string[] }));
 }
 
 export function ProposalCard({
   campaign,
+  unresolved,
   awaiting,
   onApprove,
   onReject,
 }: {
   campaign: any;
+  unresolved: Record<string, string[]>;
   awaiting: boolean;
   onApprove: () => void;
   onReject: () => void;
 }) {
   const lineItems = campaign?.line_items ?? [];
   const ads = campaign?.ads ?? [];
+  const unresolvedCount = Object.values(unresolved ?? {}).reduce(
+    (n, v) => n + v.length,
+    0,
+  );
+  const isDropped = (key: string, value: string) =>
+    (unresolved?.[key] ?? []).includes(value);
+
   return (
     <div className="rise overflow-hidden rounded-2xl border border-ink/10 bg-surface shadow-[0_8px_30px_-12px_rgba(13,16,14,0.25)]">
       <div className="flex items-center justify-between border-b border-line bg-ink px-5 py-3">
@@ -52,6 +63,15 @@ export function ProposalCard({
           <span className="nums text-ink">{campaign?.objective ?? "—"}</span>
         </div>
 
+        {unresolvedCount > 0 && (
+          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+            <span className="font-semibold">{unresolvedCount}</span> targeting
+            value{unresolvedCount === 1 ? "" : "s"} didn&rsquo;t match LinkedIn and
+            won&rsquo;t be targeted (struck through below). Everything else is
+            confirmed against the live API.
+          </div>
+        )}
+
         {lineItems.map((li: any, i: number) => (
           <div key={i} className="mt-4 rounded-xl border border-line bg-paper p-4">
             <div className="flex items-center justify-between">
@@ -67,14 +87,22 @@ export function ProposalCard({
                 <div key={f.label} className="flex gap-2 text-[12px]">
                   <span className="w-24 shrink-0 text-faint">{f.label}</span>
                   <span className="flex flex-wrap gap-1">
-                    {f.values.map((v) => (
-                      <span
-                        key={v}
-                        className="rounded-md bg-surface px-1.5 py-0.5 text-[11px] text-ink ring-1 ring-line"
-                      >
-                        {v}
-                      </span>
-                    ))}
+                    {f.values.map((v) => {
+                      const dropped = isDropped(f.key, v);
+                      return (
+                        <span
+                          key={v}
+                          title={dropped ? "No LinkedIn match — won't be targeted" : ""}
+                          className={`rounded-md px-1.5 py-0.5 text-[11px] ring-1 ${
+                            dropped
+                              ? "text-faint line-through ring-amber-200 bg-amber-50/50"
+                              : "bg-surface text-ink ring-line"
+                          }`}
+                        >
+                          {v}
+                        </span>
+                      );
+                    })}
                   </span>
                 </div>
               ))}

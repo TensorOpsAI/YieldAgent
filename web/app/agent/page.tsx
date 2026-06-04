@@ -10,7 +10,7 @@ type Item =
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string }
   | { kind: "tool"; name: string; summary: string | null }
-  | { kind: "proposal"; campaign: any }
+  | { kind: "proposal"; campaign: any; unresolved: Record<string, string[]> }
   | { kind: "created"; result: any };
 
 export default function AgentConsole() {
@@ -68,7 +68,11 @@ export default function AgentConsole() {
         });
         break;
       case "proposal":
-        push({ kind: "proposal", campaign: ev.data.campaign });
+        push({
+          kind: "proposal",
+          campaign: ev.data.campaign,
+          unresolved: ev.data.unresolved ?? {},
+        });
         setAwaiting(true);
         break;
       case "created":
@@ -224,6 +228,7 @@ export default function AgentConsole() {
                 <ProposalCard
                   key={i}
                   campaign={it.campaign}
+                  unresolved={it.unresolved}
                   awaiting={awaiting && i === items.length - 1}
                   onApprove={() => decide(true)}
                   onReject={() => decide(false)}
