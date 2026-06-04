@@ -8,6 +8,7 @@ import {
   type Campaign,
   type CreatedResult,
   type Previews,
+  type Reach,
   type ToolArgs,
 } from "@/lib/chat";
 import { fetchProviders, type Provider } from "@/lib/api";
@@ -23,6 +24,7 @@ type Item =
       campaign: Campaign;
       unresolved: Record<string, string[]>;
       previews: Previews;
+      reach: Reach;
     }
   | { kind: "created"; result: CreatedResult };
 
@@ -46,6 +48,8 @@ function toolLabel(name: string, args: ToolArgs): string {
     }
     case "preview_targeting":
       return "Resolving targeting on LinkedIn";
+    case "estimate_reach":
+      return "Estimating audience reach";
     case "propose_campaign":
       return "Preparing the proposal";
     case "create_linkedin_draft":
@@ -145,6 +149,7 @@ export default function AgentConsole() {
           campaign: ev.data.campaign,
           unresolved: ev.data.unresolved ?? {},
           previews: ev.data.previews ?? {},
+          reach: ev.data.reach ?? {},
         });
         break;
       case "created":
@@ -309,6 +314,7 @@ export default function AgentConsole() {
                   campaign={it.campaign}
                   unresolved={it.unresolved}
                   previews={it.previews}
+                  reach={it.reach}
                   awaiting={awaiting && i === items.length - 1}
                   onApprove={() => decide(true)}
                   onReject={() => decide(false)}

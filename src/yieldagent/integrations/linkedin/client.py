@@ -23,6 +23,20 @@ from .config import LinkedInConfig
 
 _BASE_URL = "https://api.linkedin.com/rest"
 _FORBIDDEN_STATUSES = {"ACTIVE", "COMPLETED"}
+
+
+def _encode_targeting_criteria(criteria: dict[str, Any]) -> str:
+    """Serialize a targetingCriteria dict into the Restli 2.0 query-string form
+    the audienceCounts finder requires: `(include:(and:List((or:(<facet>:List(
+    <urn>,…))),…)))` with every URN percent-encoded but the structure literal.
+    """
+    clauses: list[str] = []
+    for clause in criteria.get("include", {}).get("and", []):
+        for facet, urns in clause.get("or", {}).items():
+            facet_enc = quote(str(facet), safe="")
+            urns_enc = ",".join(quote(str(u), safe="") for u in urns)
+            clauses.append(f"(or:({facet_enc}:List({urns_enc})))")
+    return f"(include:(and:List({','.join(clauses)})))"
 # LinkedIn's politicalIntent is a String enum, not a boolean. Sending a bool
 # fails with "enum type is not backed by a String".
 _POLITICAL_INTENT_VALUES = {"POLITICAL", "NOT_POLITICAL", "NOT_DECLARED"}
@@ -311,6 +325,27 @@ class LinkedInClient(BaseHttpClient):
         """Resolve an `urn:li:image:…` to a temporary `downloadUrl` for display."""
         key = quote(str(image_urn), safe="")
         return await self._request("GET", f"/images/{key}")
+
+    async def audience_count(self, criteria: dict[str, Any]) -> dict[str, int]:
+        """Estimate how many LinkedIn members match a targetingCriteria.
+
+        Returns `{"total": int, "active": int}`. `total` is a rounded approximation
+        and is 0 when the audience is under 300 (LinkedIn's privacy floor, which is
+        also the minimum size a campaign can run). The targetingCriteria must go in
+        the query string pre-encoded, so this bypasses the params-based `_request`.
+        """
+        query = f"q=targetingCriteriaV2&targetingCriteria={_encode_targeting_criteria(criteria)}"
+        url = httpx.URL(f"{_BASE_URL}/audienceCounts").copy_with(query=query.encode())
+        response = await self._http.request("GET", url, headers=self._headers)
+        if response.status_code >= 400:
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = response.text
+            raise LinkedInError(response.status_code, payload)
+        elements = response.json().get("elements", [])
+        first = elements[0] if elements else {}
+        return {"total": int(first.get("total", 0)), "active": int(first.get("active", 0))}
 
     async def typeahead_targeting_entities(self, *, facet: str, query: str) -> list[dict[str, Any]]:
         """Search a targeting facet's open taxonomy (industries, titles, skills).

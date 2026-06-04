@@ -51,6 +51,8 @@ export type AdPreview = {
   image_url: string | null;
 };
 export type Previews = Record<string, AdPreview>;
+/** Estimated audience reach (total members) keyed by line-item name. */
+export type Reach = Record<string, number>;
 
 export type ToolArgs = Record<string, unknown>;
 
@@ -66,6 +68,7 @@ export type ChatEvent =
         campaign: Campaign;
         unresolved?: Record<string, string[]>;
         previews?: Previews;
+        reach?: Reach;
       };
     }
   | { event: "created"; data: { result: CreatedResult } }
