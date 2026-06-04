@@ -198,31 +198,48 @@ async def create_linkedin_draft(campaign: dict[str, Any]) -> dict[str, Any]:
     """
     issues = campaign_issues(campaign)
     if issues:
-        return {"error": "Campaign is incomplete; cannot create.", "issues": issues}
+        return {
+            "created": False,
+            "error": "Campaign is incomplete; cannot create.",
+            "issues": issues,
+        }
 
     # Imported lazily: pulls in the MCP server module only when actually creating.
     from yieldagent.integrations.linkedin import server as li_server
 
-    result = await li_server.publish_draft_campaign(campaign)
+    # LinkedIn has no transaction; publish_draft_campaign already rolls back any
+    # partial work on failure. Surface a failure as a structured result (never
+    # raise) so the UI shows a real error instead of a false "created" banner.
+    try:
+        result = await li_server.publish_draft_campaign(campaign)
+    except Exception as exc:  # noqa: BLE001 — report publish failures, don't crash the turn
+        return {"created": False, "error": f"LinkedIn did not create the draft: {exc}"}
+
     config = LinkedInConfig.from_env()
     group_id = result.get("campaign_id")
     lcm_url = _lcm_url(config.ad_account_id)
 
-    store.save(
-        {
-            "id": uuid4().hex,
-            "created_at": datetime.now(UTC).isoformat(),
-            "platform": "linkedin",
-            "name": campaign.get("name", "Untitled"),
-            "objective": campaign.get("objective", ""),
-            "status": "DRAFT",
-            "group_urn": result.get("campaign_group_urn"),
-            "lcm_url": lcm_url,
-            "targeting": _audience_summary(campaign),
-            "unresolved": result.get("notes", {}).get("unresolved_b2b_targeting", {}),
-            "payload": {"campaign": campaign, "result": result},
-        }
-    )
+    # The draft now exists on LinkedIn; persistence is best-effort and must not
+    # turn a real success into a reported failure.
+    try:
+        store.save(
+            {
+                "id": uuid4().hex,
+                "created_at": datetime.now(UTC).isoformat(),
+                "platform": "linkedin",
+                "name": campaign.get("name", "Untitled"),
+                "objective": campaign.get("objective", ""),
+                "status": "DRAFT",
+                "group_urn": result.get("campaign_group_urn"),
+                "lcm_url": lcm_url,
+                "targeting": _audience_summary(campaign),
+                "unresolved": result.get("notes", {}).get("unresolved_b2b_targeting", {}),
+                "payload": {"campaign": campaign, "result": result},
+            }
+        )
+    except Exception:  # noqa: BLE001 — draft exists on LinkedIn; dashboard sync is best-effort
+        pass
+
     return {
         "created": True,
         "campaign_id": group_id,
