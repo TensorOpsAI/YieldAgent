@@ -4,9 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV = [
-  { href: "/", label: "Dashboard" },
-  { href: "/agent", label: "Agent Console" },
-  { href: "/connections", label: "Connections" },
+  { href: "/", label: "Dashboard", icon: "▦" },
+  { href: "/agent", label: "Agent Console", icon: "◈" },
+  { href: "/connections", label: "Connections", icon: "⦿" },
 ];
 
 const STUBS = ["Target Profiles", "Campaign Briefs", "Tools", "Audit Log"];
@@ -14,46 +14,67 @@ const STUBS = ["Target Profiles", "Campaign Briefs", "Tools", "Audit Log"];
 export function Sidebar() {
   const path = usePathname();
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-gray-200 bg-gray-50">
-      <div className="border-b border-gray-200 px-5 py-4">
-        <div className="text-xs font-semibold tracking-wide text-emerald-700">
-          YIELDAGENT
+    <aside className="flex w-60 shrink-0 flex-col px-3 py-4 text-paper/90">
+      <div className="px-3 pb-5">
+        <div className="flex items-center gap-2">
+          <span className="grid h-7 w-7 place-items-center rounded-md bg-brand text-[13px] font-bold text-ink">
+            Y
+          </span>
+          <div className="leading-tight">
+            <div className="text-[13px] font-semibold tracking-tight text-white">
+              YieldAgent
+            </div>
+            <div className="text-[11px] text-paper/40">Campaign Ops</div>
+          </div>
         </div>
-        <div className="text-sm font-medium text-gray-900">Campaign Ops</div>
       </div>
-      <nav className="flex-1 space-y-1 px-3 py-3">
+
+      <nav className="flex-1 space-y-0.5">
         {NAV.map((item) => {
           const active = path === item.href;
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`block rounded-lg px-3 py-2 text-sm ${
+              className={`group flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors ${
                 active
-                  ? "bg-white font-medium text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:bg-white/70"
+                  ? "bg-white/10 text-white"
+                  : "text-paper/55 hover:bg-white/5 hover:text-paper/90"
               }`}
             >
+              <span
+                className={`text-[13px] ${active ? "text-brand" : "text-paper/35"}`}
+              >
+                {item.icon}
+              </span>
               {item.label}
             </Link>
           );
         })}
-        <div className="my-2 border-t border-gray-200" />
+
+        <div className="px-3 pb-1.5 pt-5">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-paper/30">
+            Soon
+          </span>
+        </div>
         {STUBS.map((label) => (
           <span
             key={label}
-            className="block cursor-not-allowed rounded-lg px-3 py-2 text-sm text-gray-400"
+            className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] text-paper/25"
           >
+            <span className="text-paper/15">·</span>
             {label}
           </span>
         ))}
       </nav>
-      <div className="m-3 rounded-lg border border-emerald-100 bg-emerald-50 p-3">
-        <div className="text-xs font-medium text-emerald-800">
+
+      <div className="rounded-xl border border-brand/20 bg-brand/10 p-3">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-brand">
+          <span className="h-1.5 w-1.5 rounded-full bg-brand live-dot" />
           Approval gates active
         </div>
-        <div className="mt-0.5 text-[11px] text-emerald-700/80">
-          Spend, publish &amp; broad targeting are held.
+        <div className="mt-1 text-[11px] leading-snug text-paper/40">
+          Spend, publish &amp; broad targeting are held for review.
         </div>
       </div>
     </aside>

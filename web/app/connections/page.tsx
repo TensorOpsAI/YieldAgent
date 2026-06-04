@@ -4,10 +4,20 @@ import { useEffect, useState } from "react";
 import { fetchProviders, type Provider } from "@/lib/api";
 
 const AD_PLATFORMS = [
-  { platform: "LinkedIn Ads", status: "Connected", detail: "Gad Benram" },
-  { platform: "Meta Ads", status: "Disabled", detail: "Provider setup required" },
-  { platform: "Google Ads", status: "Disabled", detail: "Provider setup required" },
+  { platform: "LinkedIn Ads", connected: true, detail: "Gad Benram" },
+  { platform: "Meta Ads", connected: false, detail: "Provider setup required" },
+  { platform: "Google Ads", connected: false, detail: "Provider setup required" },
 ];
+
+function Dot({ on }: { on: boolean }) {
+  return (
+    <span
+      className={`h-2 w-2 rounded-full ${
+        on ? "bg-brand live-dot shadow-[0_0_0_3px_var(--color-brand-soft)]" : "bg-faint/40"
+      }`}
+    />
+  );
+}
 
 export default function Connections() {
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -24,77 +34,78 @@ export default function Connections() {
   useEffect(() => load(false), []);
 
   return (
-    <div className="space-y-8 p-6">
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-xs font-medium tracking-wide text-gray-500">
-            LLM PROVIDERS
-          </h2>
-          <button
-            onClick={() => load(true)}
-            disabled={testing}
-            className="rounded-md border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            {testing ? "Testing…" : "Re-test keys"}
-          </button>
+    <div className="mx-auto max-w-6xl space-y-8 px-7 py-8">
+      <div className="flex items-end justify-between">
+        <div>
+          <span className="eyebrow">Connections</span>
+          <h1 className="mt-1 font-display text-3xl text-ink">Platform readiness</h1>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <button
+          onClick={() => load(true)}
+          disabled={testing}
+          className="rounded-lg border border-line bg-surface px-3.5 py-2 text-[12px] font-medium text-ink transition-colors hover:border-ink/20 disabled:opacity-50"
+        >
+          {testing ? "Testing…" : "Re-test keys"}
+        </button>
+      </div>
+
+      <section>
+        <div className="eyebrow mb-3">LLM providers</div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {providers.map((p) => (
             <div
               key={p.id}
-              className="rounded-xl border border-gray-200 bg-white p-4"
+              className="rounded-xl border border-line bg-surface p-4"
             >
               <div className="flex items-center justify-between">
-                <div className="font-medium text-gray-900">{p.label}</div>
-                <span
-                  className={`text-sm ${
-                    p.connected ? "text-emerald-600" : "text-gray-400"
-                  }`}
-                >
-                  {p.connected ? "● Connected" : "○ Not connected"}
-                </span>
+                <span className="font-medium text-ink">{p.label}</span>
+                <Dot on={p.connected} />
+              </div>
+              <div className="mt-0.5 text-[12px] text-muted">
+                {p.connected ? "Authenticated" : "Not connected"}
               </div>
               {p.connected ? (
-                <div className="mt-2 flex flex-wrap gap-1">
+                <div className="mt-3 flex flex-wrap gap-1">
                   {p.models.map((m) => (
                     <span
                       key={m}
-                      className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600"
+                      className="nums rounded-md bg-paper px-1.5 py-0.5 text-[11px] text-muted ring-1 ring-line"
                     >
                       {m}
                     </span>
                   ))}
                 </div>
               ) : (
-                <div className="mt-2 text-xs text-gray-400">{p.reason}</div>
+                <div className="mt-3 text-[11px] text-faint">{p.reason}</div>
               )}
             </div>
           ))}
           {providers.length === 0 && (
-            <div className="text-sm text-gray-400">Checking providers…</div>
+            <div className="text-[13px] text-faint">Checking providers…</div>
           )}
         </div>
+        <p className="mt-2 text-[11px] text-faint">
+          Keys are verified against each provider&rsquo;s models endpoint — no
+          inference is spent.
+        </p>
       </section>
 
       <section>
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-gray-500">
-          AD PLATFORMS
-        </h2>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="eyebrow mb-3">Ad platforms</div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {AD_PLATFORMS.map((c) => (
             <div
               key={c.platform}
-              className="rounded-xl border border-gray-200 bg-white p-4"
+              className="rounded-xl border border-line bg-surface p-4"
             >
-              <div className="font-medium text-gray-900">{c.platform}</div>
-              <div
-                className={`mt-1 text-sm ${
-                  c.status === "Connected" ? "text-emerald-600" : "text-gray-400"
-                }`}
-              >
-                {c.status}
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-ink">{c.platform}</span>
+                <Dot on={c.connected} />
               </div>
-              <div className="mt-1 text-xs text-gray-400">{c.detail}</div>
+              <div className="mt-0.5 text-[12px] text-muted">
+                {c.connected ? "Connected" : "Disabled"}
+              </div>
+              <div className="mt-1 text-[11px] text-faint">{c.detail}</div>
             </div>
           ))}
         </div>
