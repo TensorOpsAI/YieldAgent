@@ -7,9 +7,9 @@ export function Topbar() {
           TensorOps Growth Lab
         </span>
       </div>
-      <div className="flex items-center gap-3 text-[13px] text-muted">
+      <div className="flex items-center gap-3 text-[14px] text-muted">
         <span className="hidden sm:inline">Owner</span>
-        <span className="grid h-7 w-7 place-items-center rounded-full bg-ink text-[12px] font-semibold text-paper">
+        <span className="grid h-7 w-7 place-items-center rounded-full bg-ink text-[13px] font-semibold text-paper">
           T
         </span>
       </div>

@@ -17,14 +17,14 @@ export function Sidebar() {
     <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-sand px-3 py-4">
       <div className="px-3 pb-5">
         <div className="flex items-center gap-2">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-brand text-[13px] font-bold text-white">
+          <span className="grid h-7 w-7 place-items-center rounded-md bg-brand text-[14px] font-bold text-white">
             Y
           </span>
           <div className="leading-tight">
-            <div className="text-[13px] font-semibold tracking-tight text-ink">
+            <div className="text-[14px] font-semibold tracking-tight text-ink">
               YieldAgent
             </div>
-            <div className="text-[11px] text-muted">Campaign Ops</div>
+            <div className="text-[12px] text-muted">Campaign Ops</div>
           </div>
         </div>
       </div>
@@ -36,7 +36,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`group flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors ${
+              className={`group flex items-center gap-2.5 rounded-lg px-3 py-2 text-[14px] transition-colors ${
                 active
                   ? "bg-surface font-medium text-ink shadow-sm"
                   : "text-muted hover:bg-surface/70 hover:text-ink"
@@ -51,14 +51,14 @@ export function Sidebar() {
         })}
 
         <div className="px-3 pb-1.5 pt-5">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">
             Soon
           </span>
         </div>
         {STUBS.map((label) => (
           <span
             key={label}
-            className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] text-faint"
+            className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-[14px] text-faint"
           >
             <span className="text-line">·</span>
             {label}
@@ -67,11 +67,11 @@ export function Sidebar() {
       </nav>
 
       <div className="rounded-xl border border-brand/25 bg-brand-soft p-3">
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-brand-strong">
+        <div className="flex items-center gap-1.5 text-[12px] font-semibold text-brand-strong">
           <span className="h-1.5 w-1.5 rounded-full bg-brand live-dot" />
           Approval gates active
         </div>
-        <div className="mt-1 text-[11px] leading-snug text-muted">
+        <div className="mt-1 text-[12px] leading-snug text-muted">
           Spend, publish &amp; broad targeting are held for review.
         </div>
       </div>
