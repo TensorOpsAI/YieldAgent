@@ -1,20 +1,19 @@
 @import "tailwindcss";
 
-/* ---- Campaign Ops design system ----------------------------------------
-   Refined "operator console": dark ink rail + warm paper workspace, a single
-   confident emerald accent, technical mono for data, editorial serif accents. */
-@theme inline {
-  --color-paper: #f7f7f3;
-  --color-surface: #ffffff;
-  --color-ink: #0d100e;
-  --color-ink-soft: #14181a;
-  --color-line: #e6e6df;
-  --color-muted: #6b7269;
-  --color-faint: #9aa097;
+/* ---- Campaign Ops — warm beige operator console ------------------------- */
+@theme {
+  --color-paper: #ece4d6; /* warm beige — app background */
+  --color-surface: #f8f3ea; /* cream — cards */
+  --color-sand: #e4dccb; /* deeper beige — sidebar */
+  --color-ink: #2b2722; /* warm near-black — text + dark accents */
+  --color-ink-soft: #3d382f;
+  --color-muted: #6f685a; /* secondary text */
+  --color-faint: #9c9484; /* tertiary text */
+  --color-line: #d8cfbc; /* borders */
 
-  --color-brand: #0f9f6a;
-  --color-brand-strong: #0a7d52;
-  --color-brand-soft: #e7f4ed;
+  --color-brand: #137a53; /* forest emerald — pairs with beige */
+  --color-brand-strong: #0c5e3f;
+  --color-brand-soft: #dde8d9;
 
   --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, monospace;
@@ -22,7 +21,7 @@
 }
 
 html {
-  background: var(--color-ink);
+  background: var(--color-paper);
 }
 
 body {
@@ -32,7 +31,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Tabular, technical numerals for metrics + ids. */
 .nums {
   font-family: var(--font-mono);
   font-feature-settings: "tnum" 1;
