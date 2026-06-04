@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
+  deleteCampaign,
   fetchCampaigns,
   fetchSummary,
   type CampaignRow,
@@ -18,11 +19,34 @@ function facetChips(targeting: Record<string, string[]>): string[] {
 export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSummary().then(setSummary).catch(() => undefined);
     fetchCampaigns().then(setCampaigns).catch(() => undefined);
   }, []);
+
+  async function remove(id: string) {
+    if (removing) return;
+    setRemoving(id);
+    const wasDraft = campaigns.find((c) => c.id === id)?.status === "DRAFT";
+    try {
+      await deleteCampaign(id);
+      setCampaigns((prev) => prev.filter((c) => c.id !== id));
+      setSummary((prev) =>
+        prev
+          ? {
+              campaigns: Math.max(0, prev.campaigns - 1),
+              drafts: Math.max(0, prev.drafts - (wasDraft ? 1 : 0)),
+            }
+          : prev,
+      );
+    } catch {
+      // leave the row in place if the delete failed
+    } finally {
+      setRemoving(null);
+    }
+  }
 
   const stats = [
     { label: "Tracked spend", value: "—", hint: "n/a for drafts" },
@@ -126,6 +150,15 @@ export default function Dashboard() {
                     Campaign Manager →
                   </a>
                 )}
+                <button
+                  onClick={() => remove(c.id)}
+                  disabled={removing === c.id}
+                  title="Remove from this list (does not delete on LinkedIn)"
+                  aria-label={`Remove ${c.name} from list`}
+                  className="shrink-0 rounded-md px-1.5 py-1 text-[16px] leading-none text-faint transition-colors hover:bg-paper hover:text-ink disabled:opacity-40"
+                >
+                  ×
+                </button>
               </div>
             ))}
           </div>
