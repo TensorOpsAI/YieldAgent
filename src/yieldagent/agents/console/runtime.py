@@ -67,6 +67,7 @@ async def _drive(inp: Any, thread_id: str, model: str | None) -> AsyncIterator[E
                         "campaign": value.get("campaign", {}),
                         "unresolved": value.get("unresolved", {}),
                         "previews": value.get("previews", {}),
+                        "reach": value.get("reach", {}),
                     },
                 )
                 continue

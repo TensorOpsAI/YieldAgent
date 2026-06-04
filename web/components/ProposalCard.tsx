@@ -1,9 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import type { Audience, Campaign, LineItem, Ad, Previews } from "@/lib/chat";
+import type { Audience, Campaign, LineItem, Ad, Previews, Reach } from "@/lib/chat";
 
 type Facet = { label: string; key: string; values: string[] };
+
+/** Compact member count: 290000000 → "290M", 150000 → "150K". */
+function formatReach(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return String(n);
+}
 
 function facets(audience: Audience | undefined): Facet[] {
   const map: [string, string, string[] | undefined][] = [
@@ -27,6 +34,7 @@ export function ProposalCard({
   campaign,
   unresolved,
   previews,
+  reach,
   awaiting,
   onApprove,
   onReject,
@@ -34,6 +42,7 @@ export function ProposalCard({
   campaign: Campaign;
   unresolved: Record<string, string[]>;
   previews?: Previews;
+  reach?: Reach;
   awaiting: boolean;
   onApprove: () => void;
   onReject: () => void;
@@ -97,6 +106,21 @@ export function ProposalCard({
                 {li?.flight?.end_date}
               </span>
             </div>
+            {li?.name !== undefined && reach && li.name in reach && (
+              <div className="mt-2">
+                {reach[li.name] > 0 ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-brand-soft px-2 py-1 text-[12px] font-medium text-brand-strong">
+                    <span aria-hidden="true">◎</span>
+                    Est. audience ≈{" "}
+                    <span className="nums">{formatReach(reach[li.name])}</span> members
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[12px] font-medium text-amber-800">
+                    Audience under 300 — too small to run on LinkedIn
+                  </span>
+                )}
+              </div>
+            )}
             <div className="mt-3 grid gap-2">
               {facets(li?.targeting?.audience).map((f) => (
                 <div key={f.label} className="flex gap-2 text-[13px]">

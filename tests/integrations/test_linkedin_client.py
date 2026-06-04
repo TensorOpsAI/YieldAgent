@@ -249,3 +249,53 @@ async def test_required_headers_present(recorded_client) -> None:
     assert request.headers["authorization"] == "Bearer test-token"
     assert request.headers["linkedin-version"] == "202605"
     assert request.headers["x-restli-protocol-version"] == "2.0.0"
+
+
+def test_encode_targeting_criteria_restli_format() -> None:
+    from yieldagent.integrations.linkedin.client import _encode_targeting_criteria
+
+    criteria = {
+        "include": {
+            "and": [
+                {"or": {"urn:li:adTargetingFacet:locations": ["urn:li:geo:103644278"]}},
+                {"or": {"urn:li:adTargetingFacet:skills": ["urn:li:skill:17", "urn:li:skill:99"]}},
+            ]
+        }
+    }
+    assert _encode_targeting_criteria(criteria) == (
+        "(include:(and:List("
+        "(or:(urn%3Ali%3AadTargetingFacet%3Alocations:List(urn%3Ali%3Ageo%3A103644278))),"
+        "(or:(urn%3Ali%3AadTargetingFacet%3Askills:List("
+        "urn%3Ali%3Askill%3A17,urn%3Ali%3Askill%3A99))))))"
+    )
+
+
+async def test_audience_count_hits_endpoint_and_parses() -> None:
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["query"] = request.url.query.decode()
+        return httpx.Response(200, json={"elements": [{"active": 5, "total": 150000}]})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=5.0)
+    client = LinkedInClient(_make_config(), http=http)
+    criteria = {
+        "include": {"and": [{"or": {"urn:li:adTargetingFacet:locations": ["urn:li:geo:1"]}}]}
+    }
+    out = await client.audience_count(criteria)
+
+    assert out == {"total": 150000, "active": 5}
+    assert seen["path"].endswith("/audienceCounts")
+    assert "q=targetingCriteriaV2" in seen["query"]
+    assert "targetingCriteria=(include:(and:List(" in seen["query"]
+
+
+async def test_audience_count_raises_on_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"message": "Invalid query parameters"})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=5.0)
+    client = LinkedInClient(_make_config(), http=http)
+    with pytest.raises(LinkedInError):
+        await client.audience_count({"include": {"and": []}})

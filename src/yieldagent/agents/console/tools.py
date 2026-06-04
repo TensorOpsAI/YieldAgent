@@ -115,26 +115,51 @@ async def preview_targeting(audience: dict[str, Any]) -> dict[str, Any]:
     return {"resolved_facets": facets, "unresolved": resolved.unresolved}
 
 
-async def _unresolved_targeting(campaign: dict[str, Any]) -> dict[str, list[str]]:
-    """Resolve every line item's audience and collect what LinkedIn can't match.
+@tool
+async def estimate_reach(audience: dict[str, Any]) -> dict[str, int]:
+    """Estimate how many LinkedIn members match an audience — its total reach.
 
-    Run at propose time against the real API, so the proposal reflects exactly
-    what the publish step will target — nothing is guessed. Best-effort: if the
-    API is unavailable here, return empty (create re-resolves anyway).
+    `audience` is a yieldagent Audience dict. Returns {total, active}: `total` is
+    a rounded member count, and is 0 when the audience is under 300 — LinkedIn's
+    privacy floor, which is also the minimum size a campaign can run. Use this to
+    tell the operator how big their targeting is (and to catch a too-small audience)
+    before proposing.
     """
-    merged: dict[str, list[str]] = {}
+    parsed = Audience.model_validate(audience)
+    async with client_from_env() as client:
+        resolved = await TargetingResolver(client).resolve(parsed)
+        return await client.audience_count(resolved.criteria)
+
+
+async def _proposal_targeting(
+    campaign: dict[str, Any],
+) -> tuple[dict[str, list[str]], dict[str, int]]:
+    """Resolve every line item once against the live API, returning both the
+    unresolved facets and the estimated audience reach per line item.
+
+    Run at propose time so the proposal reflects exactly what publish will target
+    (nothing guessed) and how big that audience is. Best-effort: API trouble
+    yields empty maps and never blocks the proposal — publish re-resolves anyway.
+    """
+    unresolved: dict[str, list[str]] = {}
+    reach: dict[str, int] = {}
     try:
         async with client_from_env() as client:
             resolver = TargetingResolver(client)
             for line_item in campaign.get("line_items", []):
+                name = line_item.get("name", "")
                 audience = Audience.model_validate(line_item["targeting"]["audience"])
                 resolved = await resolver.resolve(audience)
                 for facet, names in resolved.unresolved.items():
-                    bucket = merged.setdefault(facet, [])
+                    bucket = unresolved.setdefault(facet, [])
                     bucket.extend(n for n in names if n not in bucket)
+                try:
+                    reach[name] = (await client.audience_count(resolved.criteria))["total"]
+                except Exception:  # noqa: BLE001 — reach is best-effort
+                    pass
     except Exception:  # noqa: BLE001 — best-effort preview; publish re-resolves
-        return {}
-    return merged
+        return unresolved, reach
+    return unresolved, reach
 
 
 async def _preview_existing_post(client: Any, post_urn: str) -> dict[str, Any]:
@@ -216,7 +241,7 @@ async def propose_campaign(campaign: dict[str, Any]) -> str:
             "for anything missing, then call propose_campaign again:\n- "
             + "\n- ".join(issues)
         )
-    unresolved = await _unresolved_targeting(campaign)
+    unresolved, reach = await _proposal_targeting(campaign)
     previews = await _ad_previews(campaign)
     decision = interrupt(
         {
@@ -224,6 +249,7 @@ async def propose_campaign(campaign: dict[str, Any]) -> str:
             "campaign": campaign,
             "unresolved": unresolved,
             "previews": previews,
+            "reach": reach,
         }
     )
     if decision.get("approved"):
@@ -319,6 +345,7 @@ CONSOLE_TOOLS = [
     list_company_size_buckets,
     search_targeting,
     preview_targeting,
+    estimate_reach,
     propose_campaign,
     create_linkedin_draft,
 ]
