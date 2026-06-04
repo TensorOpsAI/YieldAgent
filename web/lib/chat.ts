@@ -6,7 +6,7 @@ export type ChatEvent =
   | { event: "token"; data: { text: string } }
   | { event: "tool_call"; data: { name: string; args: unknown } }
   | { event: "tool_result"; data: { name: string; summary: string } }
-  | { event: "proposal"; data: { campaign: unknown } }
+  | { event: "proposal"; data: { campaign: unknown; unresolved?: Record<string, string[]> } }
   | { event: "created"; data: { result: unknown } }
   | { event: "error"; data: { message: string } }
   | { event: "done"; data: Record<string, never> };
