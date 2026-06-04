@@ -112,6 +112,10 @@ export default function AgentConsole() {
     <div className="flex h-full flex-col">
       {/* Model bar */}
       <div className="flex items-center gap-3 border-b border-line px-7 py-2.5">
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-paper px-2 py-1 text-[11px] font-medium text-ink ring-1 ring-line">
+          <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+          LinkedIn
+        </span>
         <span className="eyebrow">Model</span>
         <input
           list="model-presets"
