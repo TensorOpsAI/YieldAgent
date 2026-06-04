@@ -51,6 +51,7 @@ class _FakeClient:
     def __init__(self, config: LinkedInConfig):
         self.config = config
         self.create_post_calls: list[dict] = []
+        self.create_campaign_calls: list[dict] = []
         self.create_creative_calls: list[dict] = []
         self.fail_creative_on: int | None = None
         self.deleted_creatives: list[str] = []
@@ -81,7 +82,8 @@ class _FakeClient:
     async def create_campaign_group(self, **_kw) -> dict:
         return {"id": "111"}
 
-    async def create_campaign(self, **_kw) -> dict:
+    async def create_campaign(self, **kw) -> dict:
+        self.create_campaign_calls.append(kw)
         return {"id": "222"}
 
     async def create_post(self, **kw) -> dict:
@@ -207,3 +209,36 @@ async def test_minted_post_is_rolled_back_on_creative_failure(patched) -> None:
     assert client.deleted_campaigns == ["222"]
     assert client.deleted_groups == ["111"]
     assert client.deleted_creatives == []
+
+
+async def test_auto_bidding_uses_cpm_and_objective_target(patched) -> None:
+    # A LEAD_GENERATION campaign must be created with auto-bidding so no manual
+    # bid is needed: costType CPM + optimizationTargetType MAX_LEAD.
+    line_item = LineItem(
+        name="LI-1",
+        budget=Money(amount=100, currency="EUR"),
+        flight=Flight(start_date=date(2026, 7, 1), end_date=date(2026, 7, 31)),
+        targeting=Targeting(audience=Audience(description="x", geos=["US"])),
+    )
+    campaign = Campaign(
+        name="C",
+        objective=Objective.leads,
+        line_items=[line_item],
+        ads=[Ad(name="a", line_item_name="LI-1",
+                creative=CreativeAsset(name="a", existing_post_urn="urn:li:share:X"))],
+    ).model_dump(mode="json")
+
+    await srv.publish_draft_campaign(campaign)
+    call = patched["client"].create_campaign_calls[0]
+    assert call["cost_type"] == "CPM"
+    assert call["optimization_target_type"] == "MAX_LEAD"
+
+
+async def test_traffic_objective_uses_max_click(patched) -> None:
+    # The default fixture is a traffic (WEBSITE_VISITS) campaign → MAX_CLICK.
+    await srv.publish_draft_campaign(
+        _campaign(CreativeAsset(name="a", existing_post_urn="urn:li:share:X"))
+    )
+    call = patched["client"].create_campaign_calls[0]
+    assert call["cost_type"] == "CPM"
+    assert call["optimization_target_type"] == "MAX_CLICK"
