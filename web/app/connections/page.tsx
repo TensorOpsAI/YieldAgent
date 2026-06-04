@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchProviders, type Provider } from "@/lib/api";
+import {
+  fetchAdPlatforms,
+  fetchProviders,
+  type AdPlatform,
+  type Provider,
+} from "@/lib/api";
 
-const AD_PLATFORMS = [
-  { platform: "LinkedIn Ads", connected: true, detail: "Gad Benram" },
-  { platform: "Meta Ads", connected: false, detail: "Provider setup required" },
-  { platform: "Google Ads", connected: false, detail: "Provider setup required" },
-];
+function platformDetail(p: AdPlatform): string {
+  if (p.can_create) return "Connected · campaigns enabled";
+  if (p.connected) return "Connected · creation coming soon";
+  return "Not connected";
+}
 
 function Dot({ on }: { on: boolean }) {
   return (
@@ -21,6 +26,7 @@ function Dot({ on }: { on: boolean }) {
 
 export default function Connections() {
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [adPlatforms, setAdPlatforms] = useState<AdPlatform[]>([]);
   const [testing, setTesting] = useState(false);
 
   const load = (test = false) => {
@@ -31,7 +37,10 @@ export default function Connections() {
       .finally(() => setTesting(false));
   };
 
-  useEffect(() => load(false), []);
+  useEffect(() => {
+    load(false);
+    fetchAdPlatforms().then(setAdPlatforms).catch(() => undefined);
+  }, []);
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 px-7 py-8">
@@ -93,21 +102,23 @@ export default function Connections() {
       <section>
         <div className="eyebrow mb-3">Ad platforms</div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          {AD_PLATFORMS.map((c) => (
+          {adPlatforms.map((c) => (
             <div
               key={c.platform}
               className="rounded-xl border border-line bg-surface p-4"
             >
               <div className="flex items-center justify-between">
                 <span className="font-medium text-ink">{c.platform}</span>
-                <Dot on={c.connected} />
+                <Dot on={c.can_create} />
               </div>
               <div className="mt-0.5 text-[12px] text-muted">
-                {c.connected ? "Connected" : "Disabled"}
+                {platformDetail(c)}
               </div>
-              <div className="mt-1 text-[11px] text-faint">{c.detail}</div>
             </div>
           ))}
+          {adPlatforms.length === 0 && (
+            <div className="text-[13px] text-faint">Checking platforms…</div>
+          )}
         </div>
       </section>
     </div>

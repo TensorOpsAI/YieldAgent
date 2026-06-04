@@ -18,6 +18,7 @@ from typing import Any
 from langchain_core.tools import tool
 from langgraph.types import interrupt
 
+from yieldagent.agents.console.ad_platforms import ad_platform_status
 from yieldagent.agents.console.validation import campaign_issues
 from yieldagent.domain import Audience
 from yieldagent.integrations.linkedin.client import LinkedInClient
@@ -43,6 +44,17 @@ def _client() -> LinkedInClient:
 
 def _localized(entity: dict[str, Any]) -> str | None:
     return entity.get("name", {}).get("localized", {}).get("en_US")
+
+
+@tool
+def list_ad_platforms() -> list[dict[str, Any]]:
+    """List the ad platforms and whether you can create campaigns on each.
+
+    Returns `[{platform, connected, can_create}]`. Only plan and create on a
+    platform with `can_create` true (currently LinkedIn). Call this to answer the
+    operator about platform availability instead of assuming.
+    """
+    return ad_platform_status()
 
 
 @tool
@@ -173,6 +185,7 @@ async def create_linkedin_draft(campaign: dict[str, Any]) -> dict[str, Any]:
 
 
 CONSOLE_TOOLS = [
+    list_ad_platforms,
     list_seniorities,
     list_job_functions,
     list_company_size_buckets,
