@@ -1,10 +1,22 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Hanken_Grotesk, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 
-const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const hanken = Hanken_Grotesk({
+  variable: "--font-hanken",
+  subsets: ["latin"],
+});
+const jetbrains = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+});
+const instrument = Instrument_Serif({
+  variable: "--font-instrument",
+  weight: "400",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
   title: "YieldAgent — Campaign Ops",
@@ -15,13 +27,16 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${geist.variable} h-full antialiased`}>
-      <body className="h-full bg-white text-gray-900">
-        <div className="flex h-screen">
+    <html
+      lang="en"
+      className={`${hanken.variable} ${jetbrains.variable} ${instrument.variable} h-full antialiased`}
+    >
+      <body className="h-full">
+        <div className="flex h-screen bg-ink p-2 gap-2">
           <Sidebar />
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-paper ring-1 ring-black/5">
             <Topbar />
-            <main className="flex-1 overflow-auto bg-gray-50/60">{children}</main>
+            <main className="flex-1 overflow-auto">{children}</main>
           </div>
         </div>
       </body>

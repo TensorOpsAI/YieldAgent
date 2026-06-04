@@ -1,16 +1,17 @@
 export function Topbar() {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6">
-      <div>
-        <div className="text-[10px] font-medium tracking-wide text-gray-400">
-          WORKSPACE
-        </div>
-        <div className="text-sm font-semibold text-gray-900">
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-line px-7">
+      <div className="flex items-baseline gap-3">
+        <span className="eyebrow">Workspace</span>
+        <span className="font-display text-xl leading-none text-ink">
           TensorOps Growth Lab
-        </div>
+        </span>
       </div>
-      <div className="rounded-full border border-gray-200 px-3 py-1 text-sm text-gray-600">
-        Owner
+      <div className="flex items-center gap-3 text-[13px] text-muted">
+        <span className="hidden sm:inline">Owner</span>
+        <span className="grid h-7 w-7 place-items-center rounded-full bg-ink text-[12px] font-semibold text-paper">
+          T
+        </span>
       </div>
     </header>
   );
