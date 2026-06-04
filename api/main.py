@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from yieldagent.env import load_dotenv
 
-from .routes import chat, providers
+from .routes import chat, platforms, providers
 
 # The Next.js dev server runs here; widen for deployment later.
 ALLOWED_ORIGINS = ["http://localhost:3000"]
@@ -35,6 +35,7 @@ def create_app() -> FastAPI:
 
     app.include_router(chat.router, prefix="/api")
     app.include_router(providers.router, prefix="/api")
+    app.include_router(platforms.router, prefix="/api")
     return app
 
 
