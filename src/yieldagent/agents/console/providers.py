@@ -1,9 +1,10 @@
 """LLM provider catalog + connectivity checks for the console.
 
 Single source of truth for which models the UI offers, and which providers are
-actually reachable. A provider is "connected" only if its API key is set AND a
-tiny live call authenticates — so the model selector can show only usable
-models. Results are cached per process; pass force=True to re-test.
+actually reachable. A provider is "connected" only if its API key is set AND it
+authenticates — checked by calling the provider's **models-list** endpoint, which
+validates the key (401 if bad) WITHOUT running any inference, so health checks
+cost nothing. Results are cached per process; pass force=True to re-check.
 """
 
 from __future__ import annotations
@@ -12,18 +13,14 @@ import asyncio
 import os
 from typing import Any
 
-from langchain.chat_models import init_chat_model
+import httpx
 
-from yieldagent.agents.defaults import resolve_model_name
-
-# Frontier line-ups (June 2026). `test_model` is a known-cheap model used only to
-# verify the key authenticates.
+# Frontier line-ups (June 2026).
 PROVIDERS: list[dict[str, Any]] = [
     {
         "id": "google",
         "label": "Gemini",
         "env": "GOOGLE_API_KEY",
-        "test_model": "gemini-3.1-pro-preview",
         "models": [
             "gemini-3.1-pro-preview",
             "gemini-3.5-pro",
@@ -35,14 +32,12 @@ PROVIDERS: list[dict[str, Any]] = [
         "id": "openai",
         "label": "OpenAI",
         "env": "OPENAI_API_KEY",
-        "test_model": "gpt-5.4-mini",
         "models": ["gpt-5.5", "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.4", "gpt-5.4-mini"],
     },
     {
         "id": "anthropic",
         "label": "Anthropic",
         "env": "ANTHROPIC_API_KEY",
-        "test_model": "claude-haiku-4-5",
         "models": ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"],
     },
 ]
@@ -50,15 +45,37 @@ PROVIDERS: list[dict[str, Any]] = [
 _cache: dict[str, dict[str, Any]] | None = None
 
 
+def _models_request(provider_id: str, key: str) -> tuple[str, dict[str, Any]]:
+    """The free, auth-only models-list call for a provider — no inference."""
+    if provider_id == "google":
+        return (
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            {"params": {"key": key}},
+        )
+    if provider_id == "openai":
+        return (
+            "https://api.openai.com/v1/models",
+            {"headers": {"Authorization": f"Bearer {key}"}},
+        )
+    return (
+        "https://api.anthropic.com/v1/models",
+        {"headers": {"x-api-key": key, "anthropic-version": "2023-06-01"}},
+    )
+
+
 async def _probe(provider: dict[str, Any]) -> dict[str, Any]:
-    if not os.environ.get(provider["env"]):
+    key = os.environ.get(provider["env"])
+    if not key:
         return {"connected": False, "reason": f"{provider['env']} not set"}
+    url, kwargs = _models_request(provider["id"], key)
     try:
-        model = init_chat_model(resolve_model_name(provider["test_model"]))
-        await model.ainvoke("ok")
-        return {"connected": True, "reason": None}
-    except Exception as exc:  # noqa: BLE001 — any failure means "not usable"
-        return {"connected": False, "reason": f"{type(exc).__name__}: {str(exc)[:140]}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(url, **kwargs)
+        if res.status_code == 200:
+            return {"connected": True, "reason": None}
+        return {"connected": False, "reason": f"key rejected (HTTP {res.status_code})"}
+    except Exception as exc:  # noqa: BLE001 — network/anything means "not usable"
+        return {"connected": False, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
 
 
 async def status(force: bool = False) -> list[dict[str, Any]]:
