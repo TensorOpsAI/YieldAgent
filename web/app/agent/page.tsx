@@ -149,15 +149,36 @@ export default function AgentConsole() {
       <div ref={scrollRef} className="flex-1 overflow-auto">
         <div className="mx-auto max-w-3xl space-y-4 px-6 py-7">
           {items.length === 0 && (
-            <div className="mt-10 text-center">
-              <div className="font-display text-2xl text-ink">
-                What are we launching?
+            <div className="mt-10">
+              <div className="text-center">
+                <div className="font-display text-2xl text-ink">
+                  What are we launching?
+                </div>
+                <p className="mx-auto mt-2 max-w-md text-[13px] text-muted">
+                  Just tell me in plain language — no brief needed. I&rsquo;ll ask
+                  for anything I&rsquo;m missing before drafting.
+                </p>
               </div>
-              <p className="mx-auto mt-2 max-w-md text-[13px] text-muted">
-                e.g. &ldquo;brand awareness for founders &amp; CTOs in New York and
-                London, large companies, €5k, June 16–30&rdquo;. Pick a model above
-                to begin.
-              </p>
+              <div className="mx-auto mt-6 max-w-md rounded-xl border border-line bg-surface p-4">
+                <div className="eyebrow mb-2">To create a draft I need</div>
+                <ul className="space-y-1.5 text-[13px] text-muted">
+                  {[
+                    ["Objective", "awareness, leads, engagement…"],
+                    ["Budget", "amount + currency, e.g. €5,000"],
+                    ["Flight", "start & end dates"],
+                    ["Audience", "geos + who to target"],
+                    ["Creative", "an existing post, or copy + landing URL"],
+                  ].map(([k, v]) => (
+                    <li key={k} className="flex gap-2">
+                      <span className="text-brand">›</span>
+                      <span>
+                        <span className="font-medium text-ink">{k}</span>
+                        <span className="text-faint"> — {v}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           )}
 
