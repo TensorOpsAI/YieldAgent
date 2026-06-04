@@ -45,9 +45,9 @@ export default function Dashboard() {
             className="rise rounded-xl border border-line bg-surface p-4"
             style={{ animationDelay: `${i * 60}ms` }}
           >
-            <div className="text-[12px] text-muted">{s.label}</div>
+            <div className="text-[13px] text-muted">{s.label}</div>
             <div className="nums mt-2 text-3xl font-medium text-ink">{s.value}</div>
-            {s.hint && <div className="mt-1 text-[11px] text-faint">{s.hint}</div>}
+            {s.hint && <div className="mt-1 text-[12px] text-faint">{s.hint}</div>}
           </div>
         ))}
       </div>
@@ -68,7 +68,7 @@ export default function Dashboard() {
           </h2>
           <Link
             href="/agent"
-            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-[13px] font-medium text-paper transition-colors hover:bg-ink-soft"
+            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-[14px] font-medium text-paper transition-colors hover:bg-ink-soft"
           >
             New campaign <span className="text-brand">→</span>
           </Link>
@@ -81,15 +81,15 @@ export default function Dashboard() {
       >
         <div className="flex items-center justify-between">
           <span className="eyebrow">Campaigns</span>
-          <span className="nums text-[12px] text-faint">
+          <span className="nums text-[13px] text-faint">
             {campaigns.length} total
           </span>
         </div>
 
         {campaigns.length === 0 ? (
           <div className="mt-6 grid place-items-center rounded-xl border border-dashed border-line py-12 text-center">
-            <div className="text-[13px] text-muted">No campaigns created yet.</div>
-            <Link href="/agent" className="mt-1 text-[13px] font-medium text-brand-strong">
+            <div className="text-[14px] text-muted">No campaigns created yet.</div>
+            <Link href="/agent" className="mt-1 text-[14px] font-medium text-brand-strong">
               Start one with the agent →
             </Link>
           </div>
@@ -100,16 +100,16 @@ export default function Dashboard() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium text-ink">{c.name}</span>
-                    <span className="rounded bg-brand-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-strong">
+                    <span className="rounded bg-brand-soft px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-brand-strong">
                       {c.status}
                     </span>
                   </div>
                   <div className="mt-0.5 flex flex-wrap gap-1">
-                    <span className="nums text-[11px] text-faint">{c.objective}</span>
+                    <span className="nums text-[12px] text-faint">{c.objective}</span>
                     {facetChips(c.targeting).map((v) => (
                       <span
                         key={v}
-                        className="rounded bg-paper px-1.5 py-0.5 text-[11px] text-muted ring-1 ring-line"
+                        className="rounded bg-paper px-1.5 py-0.5 text-[12px] text-muted ring-1 ring-line"
                       >
                         {v}
                       </span>
@@ -121,7 +121,7 @@ export default function Dashboard() {
                     href={c.lcm_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="shrink-0 text-[12px] font-medium text-brand-strong hover:underline"
+                    className="shrink-0 text-[13px] font-medium text-brand-strong hover:underline"
                   >
                     Campaign Manager →
                   </a>

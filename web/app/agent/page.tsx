@@ -116,7 +116,7 @@ export default function AgentConsole() {
     <div className="flex h-full flex-col">
       {/* Model bar */}
       <div className="flex items-center gap-3 border-b border-line px-7 py-2.5">
-        <span className="inline-flex items-center gap-1.5 rounded-md bg-paper px-2 py-1 text-[11px] font-medium text-ink ring-1 ring-line">
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-paper px-2 py-1 text-[12px] font-medium text-ink ring-1 ring-line">
           <span className="h-1.5 w-1.5 rounded-full bg-brand" />
           LinkedIn
         </span>
@@ -126,14 +126,14 @@ export default function AgentConsole() {
           value={model}
           onChange={(e) => setModel(e.target.value)}
           placeholder={availableModels.length ? "pick a model…" : "no provider connected"}
-          className="nums w-52 rounded-md border border-line bg-surface px-2.5 py-1 text-[12px] text-ink outline-none focus:border-brand"
+          className="nums w-52 rounded-md border border-line bg-surface px-2.5 py-1 text-[13px] text-ink outline-none focus:border-brand"
         />
         <datalist id="model-presets">
           {availableModels.map((m) => (
             <option key={m} value={m} />
           ))}
         </datalist>
-        <div className="ml-auto flex items-center gap-3 text-[11px]">
+        <div className="ml-auto flex items-center gap-3 text-[12px]">
           {providers.map((p) => (
             <span
               key={p.id}
@@ -162,14 +162,14 @@ export default function AgentConsole() {
                 <div className="font-display text-2xl text-ink">
                   What are we launching?
                 </div>
-                <p className="mx-auto mt-2 max-w-md text-[13px] text-muted">
+                <p className="mx-auto mt-2 max-w-md text-[14px] text-muted">
                   Just tell me in plain language — no brief needed. I&rsquo;ll ask
                   for anything I&rsquo;m missing before drafting.
                 </p>
               </div>
               <div className="mx-auto mt-6 max-w-md rounded-xl border border-line bg-surface p-4">
                 <div className="eyebrow mb-2">To create a draft I need</div>
-                <ul className="space-y-1.5 text-[13px] text-muted">
+                <ul className="space-y-1.5 text-[14px] text-muted">
                   {[
                     ["Objective", "awareness, leads, engagement…"],
                     ["Budget", "amount + currency, e.g. €5,000"],
@@ -194,7 +194,7 @@ export default function AgentConsole() {
             if (it.kind === "user")
               return (
                 <div key={i} className="flex justify-end">
-                  <div className="rise max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-[14px] text-paper">
+                  <div className="rise max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-[15px] text-paper">
                     {it.text}
                   </div>
                 </div>
@@ -202,14 +202,14 @@ export default function AgentConsole() {
             if (it.kind === "assistant")
               return (
                 <div key={i} className="flex justify-start">
-                  <div className="rise max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-md border border-line bg-surface px-4 py-2.5 text-[14px] leading-relaxed text-ink">
+                  <div className="rise max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-md border border-line bg-surface px-4 py-2.5 text-[15px] leading-relaxed text-ink">
                     {it.text || "…"}
                   </div>
                 </div>
               );
             if (it.kind === "tool")
               return (
-                <div key={i} className="flex items-center gap-2 pl-1 text-[12px]">
+                <div key={i} className="flex items-center gap-2 pl-1 text-[13px]">
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
                       it.summary === null ? "bg-brand live-dot" : "bg-brand/40"
@@ -237,7 +237,7 @@ export default function AgentConsole() {
             return (
               <div
                 key={i}
-                className="rise flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft px-4 py-3 text-[13px] text-brand-strong"
+                className="rise flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft px-4 py-3 text-[14px] text-brand-strong"
               >
                 <span className="text-base">✓</span>
                 <span>
@@ -276,12 +276,12 @@ export default function AgentConsole() {
                   : "Describe your campaign…"
             }
             disabled={busy || !model}
-            className="flex-1 bg-transparent px-2 py-1.5 text-[14px] text-ink outline-none placeholder:text-faint disabled:opacity-60"
+            className="flex-1 bg-transparent px-2 py-1.5 text-[15px] text-ink outline-none placeholder:text-faint disabled:opacity-60"
           />
           <button
             onClick={send}
             disabled={busy || !model}
-            className="rounded-lg bg-brand px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-brand-strong disabled:opacity-40"
+            className="rounded-lg bg-brand px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-strong disabled:opacity-40"
           >
             {busy ? "…" : "Send"}
           </button>

@@ -52,7 +52,7 @@ export default function Connections() {
         <button
           onClick={() => load(true)}
           disabled={testing}
-          className="rounded-lg border border-line bg-surface px-3.5 py-2 text-[12px] font-medium text-ink transition-colors hover:border-ink/20 disabled:opacity-50"
+          className="rounded-lg border border-line bg-surface px-3.5 py-2 text-[13px] font-medium text-ink transition-colors hover:border-ink/20 disabled:opacity-50"
         >
           {testing ? "Testing…" : "Re-test keys"}
         </button>
@@ -70,7 +70,7 @@ export default function Connections() {
                 <span className="font-medium text-ink">{p.label}</span>
                 <Dot on={p.connected} />
               </div>
-              <div className="mt-0.5 text-[12px] text-muted">
+              <div className="mt-0.5 text-[13px] text-muted">
                 {p.connected ? "Authenticated" : "Not connected"}
               </div>
               {p.connected ? (
@@ -78,22 +78,22 @@ export default function Connections() {
                   {p.models.map((m) => (
                     <span
                       key={m}
-                      className="nums rounded-md bg-paper px-1.5 py-0.5 text-[11px] text-muted ring-1 ring-line"
+                      className="nums rounded-md bg-paper px-1.5 py-0.5 text-[12px] text-muted ring-1 ring-line"
                     >
                       {m}
                     </span>
                   ))}
                 </div>
               ) : (
-                <div className="mt-3 text-[11px] text-faint">{p.reason}</div>
+                <div className="mt-3 text-[12px] text-faint">{p.reason}</div>
               )}
             </div>
           ))}
           {providers.length === 0 && (
-            <div className="text-[13px] text-faint">Checking providers…</div>
+            <div className="text-[14px] text-faint">Checking providers…</div>
           )}
         </div>
-        <p className="mt-2 text-[11px] text-faint">
+        <p className="mt-2 text-[12px] text-faint">
           Keys are verified against each provider&rsquo;s models endpoint — no
           inference is spent.
         </p>
@@ -111,13 +111,13 @@ export default function Connections() {
                 <span className="font-medium text-ink">{c.platform}</span>
                 <Dot on={c.can_create} />
               </div>
-              <div className="mt-0.5 text-[12px] text-muted">
+              <div className="mt-0.5 text-[13px] text-muted">
                 {platformDetail(c)}
               </div>
             </div>
           ))}
           {adPlatforms.length === 0 && (
-            <div className="text-[13px] text-faint">Checking platforms…</div>
+            <div className="text-[14px] text-faint">Checking platforms…</div>
           )}
         </div>
       </section>
