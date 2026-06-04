@@ -10,9 +10,34 @@ import { ModelPicker } from "@/components/ModelPicker";
 type Item =
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string }
-  | { kind: "tool"; name: string; summary: string | null }
+  | { kind: "tool"; name: string; args: any; summary: string | null; count: number }
   | { kind: "proposal"; campaign: any; unresolved: Record<string, string[]> }
   | { kind: "created"; result: any };
+
+function toolLabel(name: string, args: any): string {
+  switch (name) {
+    case "list_ad_platforms":
+      return "Checking available platforms";
+    case "list_seniorities":
+      return "Looking up seniority levels";
+    case "list_job_functions":
+      return "Looking up job functions";
+    case "list_company_size_buckets":
+      return "Loading company sizes";
+    case "search_targeting":
+      return `Searching ${args?.facet ?? "targeting"}${
+        args?.query ? ` for “${args.query}”` : ""
+      }`;
+    case "preview_targeting":
+      return "Resolving targeting on LinkedIn";
+    case "propose_campaign":
+      return "Preparing the proposal";
+    case "create_linkedin_draft":
+      return "Creating the draft on LinkedIn";
+    default:
+      return name;
+  }
+}
 
 export default function AgentConsole() {
   const [items, setItems] = useState<Item[]>([]);
@@ -62,7 +87,20 @@ export default function AgentConsole() {
         });
         break;
       case "tool_call":
-        push({ kind: "tool", name: ev.data.name, summary: null });
+        setItems((prev) => {
+          const last = prev[prev.length - 1];
+          // Collapse a repeated tool (some models loop) into one row with a count.
+          if (last?.kind === "tool" && last.name === ev.data.name) {
+            return [
+              ...prev.slice(0, -1),
+              { ...last, count: last.count + 1, summary: null },
+            ];
+          }
+          return [
+            ...prev,
+            { kind: "tool", name: ev.data.name, args: ev.data.args, summary: null, count: 1 },
+          ];
+        });
         break;
       case "tool_result":
         setItems((prev) => {
@@ -72,7 +110,8 @@ export default function AgentConsole() {
           if (idx === -1) return prev;
           const real = prev.length - 1 - idx;
           const copy = [...prev];
-          copy[real] = { kind: "tool", name: ev.data.name, summary: ev.data.summary };
+          const t = copy[real] as Extract<Item, { kind: "tool" }>;
+          copy[real] = { ...t, summary: ev.data.summary };
           return copy;
         });
         break;
@@ -201,16 +240,22 @@ export default function AgentConsole() {
               );
             if (it.kind === "tool")
               return (
-                <div key={i} className="flex items-center gap-2 pl-1 text-[13px]">
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      it.summary === null ? "bg-brand live-dot" : "bg-brand/40"
-                    }`}
-                  />
-                  <span className="nums text-muted">{it.name}</span>
-                  {it.summary && (
-                    <span className="nums truncate text-faint">
-                      → {it.summary}
+                <div
+                  key={i}
+                  className="flex items-center gap-2.5 pl-1 text-[13px]"
+                  title={it.summary ?? undefined}
+                >
+                  {it.summary === null ? (
+                    <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-brand/25 border-t-brand" />
+                  ) : (
+                    <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-brand/15 text-[9px] text-brand">
+                      ✓
+                    </span>
+                  )}
+                  <span className="text-muted">{toolLabel(it.name, it.args)}</span>
+                  {it.count > 1 && (
+                    <span className="rounded bg-paper px-1 text-[11px] text-faint ring-1 ring-line">
+                      ×{it.count}
                     </span>
                   )}
                 </div>
