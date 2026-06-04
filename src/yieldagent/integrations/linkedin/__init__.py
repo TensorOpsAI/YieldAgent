@@ -11,7 +11,7 @@ manually in LinkedIn Campaign Manager — there is no API path from agent action
 to live spend.
 """
 
-from .client import LinkedInClient, LinkedInError
+from .client import LinkedInClient, LinkedInError, client_from_env
 from .config import LinkedInConfig
 
-__all__ = ["LinkedInClient", "LinkedInConfig", "LinkedInError"]
+__all__ = ["LinkedInClient", "LinkedInConfig", "LinkedInError", "client_from_env"]

@@ -36,10 +36,6 @@ from .targeting import TargetingResolver
 mcp = FastMCP("yieldagent-linkedin")
 
 
-def _client() -> LinkedInClient:
-    return LinkedInClient(LinkedInConfig.from_env())
-
-
 class _Created:
     """Tracks resources created during a publish so they can be rolled back.
 
@@ -82,63 +78,6 @@ async def _rollback(client: LinkedInClient, created: _Created) -> list[str]:
     for post_urn in reversed(created.posts):
         await _try(f"post {post_urn}", client.delete_post(post_urn))
     return warnings
-
-
-@mcp.tool()
-async def get_ad_account() -> dict[str, Any]:
-    """Return metadata for the configured LinkedIn ad account."""
-    async with _client() as client:
-        return await client.get_ad_account()
-
-
-@mcp.tool()
-async def create_campaign_group(
-    name: str, total_budget_amount: str, currency: str
-) -> dict[str, Any]:
-    """Create a DRAFT Campaign Group on the configured account."""
-    async with _client() as client:
-        client.assert_account_allowed()
-        return await client.create_campaign_group(
-            name=name,
-            total_budget={"amount": total_budget_amount, "currencyCode": currency.upper()},
-        )
-
-
-@mcp.tool()
-async def create_campaign(
-    campaign_group_urn: str,
-    name: str,
-    objective_type: str,
-    total_budget_amount: str,
-    currency: str,
-    start_epoch_ms: int,
-    end_epoch_ms: int,
-    targeting_criteria: dict[str, Any],
-    locale_country: str = "US",
-    locale_language: str = "en",
-    campaign_type: str = DEFAULT_CAMPAIGN_TYPE,
-) -> dict[str, Any]:
-    """Create a DRAFT Campaign (= YieldAgent LineItem) under a Campaign Group."""
-    async with _client() as client:
-        client.assert_account_allowed()
-        return await client.create_campaign(
-            campaign_group_urn=campaign_group_urn,
-            name=name,
-            objective_type=objective_type,
-            campaign_type=campaign_type,
-            total_budget={"amount": total_budget_amount, "currencyCode": currency.upper()},
-            run_schedule={"start": start_epoch_ms, "end": end_epoch_ms},
-            targeting_criteria=targeting_criteria,
-            locale={"country": locale_country.upper(), "language": locale_language.lower()},
-        )
-
-
-@mcp.tool()
-async def create_creative(campaign_urn: str, content: dict[str, Any]) -> dict[str, Any]:
-    """Create a DRAFT Creative (= YieldAgent Ad) under a Campaign."""
-    async with _client() as client:
-        client.assert_account_allowed()
-        return await client.create_creative(campaign_urn=campaign_urn, content=content)
 
 
 def _group_budget(parsed: Campaign) -> tuple[Any, str]:

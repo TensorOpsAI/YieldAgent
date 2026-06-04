@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -49,7 +50,9 @@ async def _sse(thread_id: str, events: AsyncIterator) -> AsyncIterator[dict[str,
 
 @router.post("/chat")
 async def chat(req: ChatRequest) -> EventSourceResponse:
-    thread_id = req.thread_id or "thread-demo"
+    # A fresh conversation gets its own thread so concurrent operators don't
+    # share one checkpointed state (and pending approval interrupt).
+    thread_id = req.thread_id or f"thread-{uuid4().hex}"
     events = runtime.run(req.message, thread_id, req.model)
     return EventSourceResponse(_sse(thread_id, events))
 
