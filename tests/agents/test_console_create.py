@@ -101,5 +101,87 @@ async def test_runtime_emits_error_on_raw_exception_string(monkeypatch) -> None:
     assert not any(name == "created" for name, _ in events)
 
 
+class _FakeLinkedIn:
+    """Async-context stand-in for the LinkedIn client used by _ad_previews."""
+
+    def __init__(self, post: dict | None = None, image: dict | None = None) -> None:
+        self._post = post or {}
+        self._image = image or {}
+
+    async def __aenter__(self) -> _FakeLinkedIn:
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        pass
+
+    async def get_post(self, _urn: str) -> dict:
+        return self._post
+
+    async def get_image(self, _urn: str) -> dict:
+        return self._image
+
+
+async def test_ad_preview_from_existing_post(monkeypatch) -> None:
+    post = {
+        "commentary": "Static floors cost money.",
+        "content": {
+            "article": {
+                "title": "Setting floors without killing win rate",
+                "source": "https://tensorops.ai/blog/floors",
+                "thumbnail": "urn:li:image:1",
+            }
+        },
+    }
+    monkeypatch.setattr(
+        tools, "client_from_env",
+        lambda: _FakeLinkedIn(post=post, image={"downloadUrl": "https://media/x.jpg"}),
+    )
+    campaign = {"ads": [{"name": "Ad1", "creative": {"existing_post_urn": "urn:li:share:9"}}]}
+    previews = await tools._ad_previews(campaign)
+    p = previews["Ad1"]
+    assert p["source"] == "existing_post"
+    assert p["headline"] == "Setting floors without killing win rate"
+    assert p["text"] == "Static floors cost money."
+    assert p["url"] == "https://tensorops.ai/blog/floors"
+    assert p["image_url"] == "https://media/x.jpg"
+
+
+async def test_ad_preview_from_ad_copy(monkeypatch) -> None:
+    monkeypatch.setattr(tools, "client_from_env", lambda: _FakeLinkedIn())
+    campaign = {
+        "ads": [
+            {
+                "name": "Ad2",
+                "creative": {
+                    "headline": "Scale your startup",
+                    "primary_text": "TensorOps helps you ship AI",
+                    "landing_url": "https://tensorops.ai",
+                },
+            }
+        ]
+    }
+    previews = await tools._ad_previews(campaign)
+    assert previews["Ad2"] == {
+        "source": "ad_copy",
+        "headline": "Scale your startup",
+        "text": "TensorOps helps you ship AI",
+        "url": "https://tensorops.ai",
+        "image_url": None,
+    }
+
+
+async def test_ad_preview_best_effort_on_post_failure(monkeypatch) -> None:
+    class _Boom(_FakeLinkedIn):
+        async def get_post(self, _urn: str) -> dict:
+            raise RuntimeError("post fetch failed")
+
+    monkeypatch.setattr(tools, "client_from_env", lambda: _Boom())
+    campaign = {"ads": [{"name": "Ad3", "creative": {"existing_post_urn": "urn:li:share:9"}}]}
+    previews = await tools._ad_previews(campaign)
+    # a failed fetch still yields a sparse preview, never raises
+    assert previews["Ad3"]["source"] == "existing_post"
+    assert previews["Ad3"]["headline"] is None
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

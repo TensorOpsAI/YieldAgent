@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Audience, Campaign, LineItem, Ad } from "@/lib/chat";
+import type { Audience, Campaign, LineItem, Ad, Previews } from "@/lib/chat";
 
 type Facet = { label: string; key: string; values: string[] };
 
@@ -26,12 +26,14 @@ function facets(audience: Audience | undefined): Facet[] {
 export function ProposalCard({
   campaign,
   unresolved,
+  previews,
   awaiting,
   onApprove,
   onReject,
 }: {
   campaign: Campaign;
   unresolved: Record<string, string[]>;
+  previews?: Previews;
   awaiting: boolean;
   onApprove: () => void;
   onReject: () => void;
@@ -126,10 +128,11 @@ export function ProposalCard({
         {ads.length > 0 && (
           <div className="mt-4">
             <div className="eyebrow mb-1.5">Ads</div>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               {ads.map((ad: Ad, i: number) => {
                 const c = ad?.creative ?? {};
-                const source = c.existing_post_urn
+                const preview = previews?.[ad?.name ?? ""];
+                const fallback = c.existing_post_urn
                   ? `post ${c.existing_post_urn}`
                   : c.landing_url
                     ? `new post → ${c.landing_url}`
@@ -137,10 +140,58 @@ export function ProposalCard({
                 return (
                   <div
                     key={i}
-                    className="flex items-center justify-between rounded-lg border border-line bg-paper px-3 py-2 text-[13px]"
+                    className="rounded-xl border border-line bg-paper p-3"
                   >
-                    <span className="text-ink">{ad?.name}</span>
-                    <span className="nums text-faint">{source}</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] font-medium text-ink">
+                        {ad?.name}
+                      </span>
+                      <span className="text-[11px] text-faint">
+                        {preview?.source === "existing_post"
+                          ? "Sponsoring existing post"
+                          : preview?.source === "ad_copy"
+                            ? "New post"
+                            : ""}
+                      </span>
+                    </div>
+                    {preview ? (
+                      <div className="mt-2 flex gap-3">
+                        {preview.image_url && (
+                          // Ephemeral external LinkedIn media URL (expires) — next/image
+                          // optimization isn't appropriate, so a plain img is correct here.
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={preview.image_url}
+                            alt={preview.headline ?? "Ad creative"}
+                            className="h-16 w-16 shrink-0 rounded-md object-cover ring-1 ring-line"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          {preview.headline && (
+                            <div className="line-clamp-2 text-[13px] font-medium text-ink">
+                              {preview.headline}
+                            </div>
+                          )}
+                          {preview.text && (
+                            <div className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted">
+                              {preview.text}
+                            </div>
+                          )}
+                          {preview.url && (
+                            <a
+                              href={preview.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-1 block truncate text-[12px] text-brand-strong hover:underline"
+                            >
+                              {preview.url}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="nums mt-1 text-[12px] text-faint">{fallback}</div>
+                    )}
                   </div>
                 );
               })}

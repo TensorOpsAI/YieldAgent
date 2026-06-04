@@ -42,6 +42,16 @@ export type CreatedResult = {
   error?: string;
   ad_ids?: string[];
 };
+export type AdPreview = {
+  source: "existing_post" | "ad_copy";
+  post_urn?: string;
+  headline: string | null;
+  text: string | null;
+  url: string | null;
+  image_url: string | null;
+};
+export type Previews = Record<string, AdPreview>;
+
 export type ToolArgs = Record<string, unknown>;
 
 // Mirrors the backend SSE contract (api/routes/chat.py).
@@ -52,7 +62,11 @@ export type ChatEvent =
   | { event: "tool_result"; data: { name: string; summary: string } }
   | {
       event: "proposal";
-      data: { campaign: Campaign; unresolved?: Record<string, string[]> };
+      data: {
+        campaign: Campaign;
+        unresolved?: Record<string, string[]>;
+        previews?: Previews;
+      };
     }
   | { event: "created"; data: { result: CreatedResult } }
   | { event: "error"; data: { message: string } }
