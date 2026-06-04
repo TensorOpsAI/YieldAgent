@@ -14,7 +14,7 @@ from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
-from yieldagent.agents.console.chat import console_model_name
+from yieldagent.agents.console.llm import console_model_name
 from yieldagent.agents.console.prompts import CONSOLE_SYSTEM_PROMPT
 from yieldagent.agents.console.tools import CONSOLE_TOOLS
 from yieldagent.agents.defaults import resolve_model_name

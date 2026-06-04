@@ -16,7 +16,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
 from yieldagent.agents.console.agent import get_console_agent
-from yieldagent.agents.console.chat import _delta_text
+from yieldagent.agents.console.llm import delta_text
 
 Event = tuple[str, dict[str, Any]]
 
@@ -45,7 +45,7 @@ async def _drive(inp: Any, thread_id: str, model: str | None) -> AsyncIterator[E
         if mode == "messages":
             msg, _meta = chunk
             if getattr(msg, "type", "") == "AIMessageChunk":
-                text = _delta_text(getattr(msg, "content", ""))
+                text = delta_text(getattr(msg, "content", ""))
                 if text:
                     yield ("token", {"text": text})
             continue

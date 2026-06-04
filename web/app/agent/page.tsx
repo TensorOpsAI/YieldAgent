@@ -29,13 +29,7 @@ export default function AgentConsole() {
     .flatMap((p) => p.models);
 
   useEffect(() => {
-    fetchProviders()
-      .then((ps) => {
-        setProviders(ps);
-        const first = ps.filter((p) => p.connected).flatMap((p) => p.models)[0];
-        if (first) setModel((m) => m || first);
-      })
-      .catch(() => undefined);
+    fetchProviders().then(setProviders).catch(() => undefined);
   }, []);
 
   const push = (item: Item) => setItems((prev) => [...prev, item]);
@@ -101,7 +95,7 @@ export default function AgentConsole() {
 
   async function send() {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || !model) return;
     setInput("");
     push({ kind: "user", text });
     await consume(streamChat(text, threadId.current, model));
@@ -123,7 +117,7 @@ export default function AgentConsole() {
           list="model-presets"
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          placeholder={availableModels.length ? "" : "no provider connected"}
+          placeholder={availableModels.length ? "Pick a model…" : "no provider connected"}
           className="w-60 rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:border-emerald-500"
         />
         <datalist id="model-presets">
@@ -207,13 +201,19 @@ export default function AgentConsole() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder={awaiting ? "Approve or reject the draft above…" : "Message the agent…"}
-          disabled={busy}
+          placeholder={
+            !model
+              ? "Pick a model above to start…"
+              : awaiting
+                ? "Approve or reject the draft above…"
+                : "Message the agent…"
+          }
+          disabled={busy || !model}
           className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 disabled:bg-gray-50"
         />
         <button
           onClick={send}
-          disabled={busy}
+          disabled={busy || !model}
           className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
         >
           {busy ? "…" : "Send"}
