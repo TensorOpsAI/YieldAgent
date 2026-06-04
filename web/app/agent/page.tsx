@@ -12,12 +12,24 @@ type Item =
   | { kind: "proposal"; campaign: any }
   | { kind: "created"; result: any };
 
+// Current frontier/active models as of June 2026 (see docs). Provider is
+// inferred from the name; each needs its own API key. Type a custom name too.
 const MODEL_PRESETS = [
+  // Google Gemini
   "gemini-3.1-pro-preview",
-  "gemini-2.5-flash",
-  "gpt-4o",
-  "gpt-4o-mini",
-  "claude-3-5-sonnet-latest",
+  "gemini-3.5-pro",
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+  // OpenAI
+  "gpt-5.5",
+  "gpt-5.5-pro",
+  "gpt-5.5-mini",
+  "gpt-5.4",
+  "gpt-5.4-mini",
+  // Anthropic
+  "claude-opus-4-8",
+  "claude-sonnet-4-6",
+  "claude-haiku-4-5",
 ];
 
 export default function AgentConsole() {
