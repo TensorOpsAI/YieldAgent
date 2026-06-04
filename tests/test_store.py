@@ -38,6 +38,17 @@ def test_save_list_get_and_summary(tmp_path, monkeypatch) -> None:
     assert campaigns.summary() == {"total": 1, "drafts": 1}
 
 
+def test_delete_removes_row_and_reports_hit(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("YIELDAGENT_DB", str(tmp_path / "test.db"))
+    campaigns.save(_record("abc"))
+
+    assert campaigns.delete("abc") is True
+    assert campaigns.list_all() == []
+    assert campaigns.summary() == {"total": 0, "drafts": 0}
+    # deleting a missing id is a no-op, reported as False
+    assert campaigns.delete("abc") is False
+
+
 def test_list_is_newest_first(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("YIELDAGENT_DB", str(tmp_path / "test.db"))
     older = _record("old") | {"created_at": "2026-06-01T00:00:00+00:00", "name": "Old"}

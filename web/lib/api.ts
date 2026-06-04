@@ -53,3 +53,9 @@ export async function fetchSummary(): Promise<Summary> {
   if (!res.ok) throw new Error("Failed to fetch summary");
   return res.json();
 }
+
+/** Forget a campaign locally (removes it from the dashboard). Does not touch LinkedIn. */
+export async function deleteCampaign(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/campaigns/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete campaign");
+}

@@ -64,6 +64,18 @@ def get(campaign_id: str) -> dict[str, Any] | None:
     return record
 
 
+def delete(campaign_id: str) -> bool:
+    """Remove a campaign record from the app store. Returns True if a row was
+    deleted. Note: this only forgets it locally — it does not touch LinkedIn.
+    """
+    conn = db.connect()
+    with conn:
+        cur = conn.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))
+    deleted = cur.rowcount > 0
+    conn.close()
+    return deleted
+
+
 def summary() -> dict[str, int]:
     conn = db.connect()
     total = conn.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0]

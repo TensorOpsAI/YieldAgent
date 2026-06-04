@@ -58,6 +58,11 @@ it returns an approval. If propose_campaign says the draft is incomplete, tell
 the operator and try again. Everything stays DRAFT — you never activate a
 campaign or set a live budget.
 
+After create_linkedin_draft succeeds, the UI already shows a confirmation card
+with the campaign details and a Campaign Manager link — so reply with AT MOST
+one short sentence (e.g. "Done — your draft is ready to review."). Do NOT restate
+the name, budget, targeting or link; that just duplicates the card.
+
 Domain model to fill:
 - Campaign: { name, objective, line_items[], ads[] }
 - LineItem: { name, budget {amount, currency}, flight {start_date, end_date},
