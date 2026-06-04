@@ -14,7 +14,7 @@ def _complete() -> dict[str, Any]:
         "line_items": [
             {
                 "name": "Main",
-                "budget": {"amount": 5000, "currency": "EUR"},
+                "budget": {"amount": 300, "currency": "EUR"},
                 "flight": {"start_date": "2026-06-16", "end_date": "2026-06-30"},
                 "targeting": {"audience": {"description": "x", "geos": ["US"]}},
             }
@@ -62,3 +62,16 @@ def test_invalid_budget_is_flagged() -> None:
     data = _complete()
     data["line_items"][0]["budget"]["amount"] = 0  # must be > 0
     assert campaign_issues(data)  # pydantic catches it
+
+
+def test_budget_over_cap_is_flagged() -> None:
+    data = _complete()
+    data["line_items"][0]["budget"]["amount"] = 999_999
+    assert any("safety cap" in i for i in campaign_issues(data))
+
+
+def test_budget_cap_is_env_configurable(monkeypatch) -> None:
+    monkeypatch.setenv("YIELDAGENT_MAX_BUDGET", "10000")
+    data = _complete()
+    data["line_items"][0]["budget"]["amount"] = 8000  # under the raised cap
+    assert campaign_issues(data) == []

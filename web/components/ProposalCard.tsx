@@ -110,6 +110,31 @@ export function ProposalCard({
           </div>
         ))}
 
+        {ads.length > 0 && (
+          <div className="mt-4">
+            <div className="eyebrow mb-1.5">Ads</div>
+            <div className="grid gap-1.5">
+              {ads.map((ad: any, i: number) => {
+                const c = ad?.creative ?? {};
+                const source = c.existing_post_urn
+                  ? `post ${c.existing_post_urn}`
+                  : c.landing_url
+                    ? `new post → ${c.landing_url}`
+                    : "no source";
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between rounded-lg border border-line bg-paper px-3 py-2 text-[12px]"
+                  >
+                    <span className="text-ink">{ad?.name}</span>
+                    <span className="nums text-faint">{source}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {awaiting && (
           <div className="mt-4 flex items-center gap-2">
             <button
