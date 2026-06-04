@@ -55,9 +55,9 @@ async function* streamSSE(
   }
 }
 
-/** Start a chat turn. */
-export function streamChat(message: string, threadId?: string) {
-  return streamSSE("/api/chat", { message, thread_id: threadId });
+/** Start a chat turn. `model` overrides the backend default for this request. */
+export function streamChat(message: string, threadId?: string, model?: string) {
+  return streamSSE("/api/chat", { message, thread_id: threadId, model });
 }
 
 /** Resume a paused turn after the operator approves/rejects a proposal. */
@@ -65,10 +65,12 @@ export function streamResume(
   threadId: string,
   approved: boolean,
   reason?: string,
+  model?: string,
 ) {
   return streamSSE("/api/chat/resume", {
     thread_id: threadId,
     approved,
     reason,
+    model,
   });
 }

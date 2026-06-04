@@ -12,11 +12,20 @@ type Item =
   | { kind: "proposal"; campaign: any }
   | { kind: "created"; result: any };
 
+const MODEL_PRESETS = [
+  "gemini-3.1-pro-preview",
+  "gemini-2.5-flash",
+  "gpt-4o",
+  "gpt-4o-mini",
+  "claude-3-5-sonnet-latest",
+];
+
 export default function AgentConsole() {
   const [items, setItems] = useState<Item[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [awaiting, setAwaiting] = useState(false);
+  const [model, setModel] = useState(MODEL_PRESETS[0]);
   const threadId = useRef<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -86,17 +95,36 @@ export default function AgentConsole() {
     if (!text || busy) return;
     setInput("");
     push({ kind: "user", text });
-    await consume(streamChat(text, threadId.current));
+    await consume(streamChat(text, threadId.current, model));
   }
 
   async function decide(approved: boolean) {
     if (!threadId.current) return;
     setAwaiting(false);
-    await consume(streamResume(threadId.current, approved, approved ? "" : "rejected"));
+    await consume(
+      streamResume(threadId.current, approved, approved ? "" : "rejected", model),
+    );
   }
 
   return (
     <div className="flex h-full flex-col">
+      <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-6 py-2">
+        <label className="text-xs text-gray-500">Model</label>
+        <input
+          list="model-presets"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          className="w-64 rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:border-emerald-500"
+        />
+        <datalist id="model-presets">
+          {MODEL_PRESETS.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+        <span className="text-[11px] text-gray-400">
+          switches per message · key required per provider
+        </span>
+      </div>
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-6">
         {items.length === 0 && (
           <div className="text-sm text-gray-400">

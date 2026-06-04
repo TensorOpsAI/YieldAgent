@@ -1,9 +1,9 @@
-"""Chat endpoint.
+"""Chat endpoint — drives the conversational console agent over SSE.
 
-M0: echoes the user's message back as streamed `token` events. The SSE event
-contract (thread / token / tool_call / tool_result / proposal / created / error /
-done) is fixed here so the frontend and the real M1 agent speak one protocol —
-only the producer behind `_stream` changes.
+The event contract (thread / token / tool_call / tool_result / proposal /
+created / error / done) is fixed in `_sse` so the frontend and the agent runtime
+speak one protocol. An optional `model` per request overrides the default,
+letting the operator A/B providers from the UI.
 """
 
 from __future__ import annotations
@@ -23,12 +23,14 @@ router = APIRouter()
 class ChatRequest(BaseModel):
     thread_id: str | None = None
     message: str
+    model: str | None = None
 
 
 class ResumeRequest(BaseModel):
     thread_id: str
     approved: bool
     reason: str | None = None
+    model: str | None = None
 
 
 def _event(name: str, payload: dict) -> dict[str, str]:
@@ -48,10 +50,11 @@ async def _sse(thread_id: str, events: AsyncIterator) -> AsyncIterator[dict[str,
 @router.post("/chat")
 async def chat(req: ChatRequest) -> EventSourceResponse:
     thread_id = req.thread_id or "thread-demo"
-    return EventSourceResponse(_sse(thread_id, runtime.run(req.message, thread_id)))
+    events = runtime.run(req.message, thread_id, req.model)
+    return EventSourceResponse(_sse(thread_id, events))
 
 
 @router.post("/chat/resume")
 async def chat_resume(req: ResumeRequest) -> EventSourceResponse:
-    events = runtime.resume(req.thread_id, req.approved, req.reason)
+    events = runtime.resume(req.thread_id, req.approved, req.reason, req.model)
     return EventSourceResponse(_sse(req.thread_id, events))

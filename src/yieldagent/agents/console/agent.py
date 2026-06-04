@@ -19,17 +19,21 @@ from yieldagent.agents.console.prompts import CONSOLE_SYSTEM_PROMPT
 from yieldagent.agents.console.tools import CONSOLE_TOOLS
 from yieldagent.agents.defaults import resolve_model_name
 
-_AGENT: Any = None
+# One checkpointer shared across all model variants, so a conversation (and its
+# pending approval interrupt) survives even if the operator switches model
+# mid-thread. Agents are cached per model name.
+_CHECKPOINTER = MemorySaver()
+_AGENTS: dict[str, Any] = {}
 
 
-def get_console_agent() -> Any:
-    global _AGENT
-    if _AGENT is None:
-        model = init_chat_model(resolve_model_name(console_model_name()))
-        _AGENT = create_react_agent(
+def get_console_agent(model_name: str | None = None) -> Any:
+    name = model_name or console_model_name()
+    if name not in _AGENTS:
+        model = init_chat_model(resolve_model_name(name))
+        _AGENTS[name] = create_react_agent(
             model,
             CONSOLE_TOOLS,
             prompt=CONSOLE_SYSTEM_PROMPT,
-            checkpointer=MemorySaver(),
+            checkpointer=_CHECKPOINTER,
         )
-    return _AGENT
+    return _AGENTS[name]

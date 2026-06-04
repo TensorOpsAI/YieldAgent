@@ -36,8 +36,8 @@ def _summarize(content: Any) -> str:
     return text if len(text) <= 300 else text[:297] + "…"
 
 
-async def _drive(inp: Any, thread_id: str) -> AsyncIterator[Event]:
-    agent = get_console_agent()
+async def _drive(inp: Any, thread_id: str, model: str | None) -> AsyncIterator[Event]:
+    agent = get_console_agent(model)
     config = {"configurable": {"thread_id": thread_id}}
     async for mode, chunk in agent.astream(
         inp, config, stream_mode=["messages", "updates"]
@@ -70,9 +70,13 @@ async def _drive(inp: Any, thread_id: str) -> AsyncIterator[Event]:
                         yield ("tool_result", {"name": name, "summary": _summarize(content)})
 
 
-def run(message: str, thread_id: str) -> AsyncIterator[Event]:
-    return _drive({"messages": [HumanMessage(content=message)]}, thread_id)
+def run(message: str, thread_id: str, model: str | None = None) -> AsyncIterator[Event]:
+    return _drive({"messages": [HumanMessage(content=message)]}, thread_id, model)
 
 
-def resume(thread_id: str, approved: bool, reason: str | None) -> AsyncIterator[Event]:
-    return _drive(Command(resume={"approved": approved, "reason": reason or ""}), thread_id)
+def resume(
+    thread_id: str, approved: bool, reason: str | None, model: str | None = None
+) -> AsyncIterator[Event]:
+    return _drive(
+        Command(resume={"approved": approved, "reason": reason or ""}), thread_id, model
+    )
