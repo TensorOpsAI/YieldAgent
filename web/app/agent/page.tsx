@@ -1,8 +1,9 @@
 "use client";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { streamChat, streamResume, type ChatEvent } from "@/lib/chat";
+import { fetchProviders, type Provider } from "@/lib/api";
 import { ProposalCard } from "@/components/ProposalCard";
 
 type Item =
@@ -12,34 +13,30 @@ type Item =
   | { kind: "proposal"; campaign: any }
   | { kind: "created"; result: any };
 
-// Current frontier/active models as of June 2026 (see docs). Provider is
-// inferred from the name; each needs its own API key. Type a custom name too.
-const MODEL_PRESETS = [
-  // Google Gemini
-  "gemini-3.1-pro-preview",
-  "gemini-3.5-pro",
-  "gemini-3.5-flash",
-  "gemini-3.1-flash-lite",
-  // OpenAI
-  "gpt-5.5",
-  "gpt-5.5-pro",
-  "gpt-5.5-mini",
-  "gpt-5.4",
-  "gpt-5.4-mini",
-  // Anthropic
-  "claude-opus-4-8",
-  "claude-sonnet-4-6",
-  "claude-haiku-4-5",
-];
-
 export default function AgentConsole() {
   const [items, setItems] = useState<Item[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [awaiting, setAwaiting] = useState(false);
-  const [model, setModel] = useState(MODEL_PRESETS[0]);
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [model, setModel] = useState("");
   const threadId = useRef<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Only offer models from providers whose keys actually authenticate.
+  const availableModels = providers
+    .filter((p) => p.connected)
+    .flatMap((p) => p.models);
+
+  useEffect(() => {
+    fetchProviders()
+      .then((ps) => {
+        setProviders(ps);
+        const first = ps.filter((p) => p.connected).flatMap((p) => p.models)[0];
+        if (first) setModel((m) => m || first);
+      })
+      .catch(() => undefined);
+  }, []);
 
   const push = (item: Item) => setItems((prev) => [...prev, item]);
   const scroll = () =>
@@ -120,22 +117,33 @@ export default function AgentConsole() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-6 py-2">
+      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-6 py-2">
         <label className="text-xs text-gray-500">Model</label>
         <input
           list="model-presets"
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          className="w-64 rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:border-emerald-500"
+          placeholder={availableModels.length ? "" : "no provider connected"}
+          className="w-60 rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:border-emerald-500"
         />
         <datalist id="model-presets">
-          {MODEL_PRESETS.map((m) => (
+          {availableModels.map((m) => (
             <option key={m} value={m} />
           ))}
         </datalist>
-        <span className="text-[11px] text-gray-400">
-          switches per message · key required per provider
-        </span>
+        <div className="flex items-center gap-2 text-[11px]">
+          {providers.map((p) => (
+            <span
+              key={p.id}
+              title={p.reason ?? "connected"}
+              className={
+                p.connected ? "text-emerald-600" : "text-gray-300 line-through"
+              }
+            >
+              {p.connected ? "●" : "○"} {p.label}
+            </span>
+          ))}
+        </div>
       </div>
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-6">
         {items.length === 0 && (
