@@ -104,9 +104,17 @@ export default function AgentConsole() {
         break;
       case "tool_result":
         setItems((prev) => {
+          // Match the most recent unfilled row for THIS tool by name — two
+          // different tools can be in flight at once (the collapse only merges
+          // consecutive identical names), so position alone could mis-assign.
           const idx = [...prev]
             .reverse()
-            .findIndex((it) => it.kind === "tool" && it.summary === null);
+            .findIndex(
+              (it) =>
+                it.kind === "tool" &&
+                it.summary === null &&
+                it.name === ev.data.name,
+            );
           if (idx === -1) return prev;
           const real = prev.length - 1 - idx;
           const copy = [...prev];
@@ -121,7 +129,6 @@ export default function AgentConsole() {
           campaign: ev.data.campaign,
           unresolved: ev.data.unresolved ?? {},
         });
-        setAwaiting(true);
         break;
       case "created":
         push({ kind: "created", result: ev.data.result });
@@ -135,12 +142,22 @@ export default function AgentConsole() {
 
   async function consume(gen: AsyncGenerator<ChatEvent>) {
     setBusy(true);
+    // The graph is paused awaiting approval iff THIS turn ended on a proposal.
+    // Deriving it here (instead of a sticky flag) means an error or a normal
+    // reply correctly clears it — so the next message can't mis-route to resume
+    // a thread that isn't actually paused.
+    let endedOnProposal = false;
     try {
-      for await (const ev of gen) handle(ev);
-    } catch {
-      push({ kind: "assistant", text: "⚠ connection error — is the API running?" });
+      for await (const ev of gen) {
+        if (ev.event === "proposal") endedOnProposal = true;
+        handle(ev);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "connection error";
+      push({ kind: "assistant", text: `⚠ ${msg} — is the API running?` });
     } finally {
       setBusy(false);
+      setAwaiting(endedOnProposal);
     }
   }
 
