@@ -23,7 +23,6 @@ export default function AgentConsole() {
   const threadId = useRef<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Only offer models from providers whose keys actually authenticate.
   const availableModels = providers
     .filter((p) => p.connected)
     .flatMap((p) => p.models);
@@ -76,7 +75,7 @@ export default function AgentConsole() {
         push({ kind: "created", result: ev.data.result });
         break;
       case "error":
-        push({ kind: "assistant", text: `⚠️ ${ev.data.message}` });
+        push({ kind: "assistant", text: `⚠ ${ev.data.message}` });
         break;
     }
     scroll();
@@ -87,7 +86,7 @@ export default function AgentConsole() {
     try {
       for await (const ev of gen) handle(ev);
     } catch {
-      push({ kind: "assistant", text: "⚠️ connection error — is the API running?" });
+      push({ kind: "assistant", text: "⚠ connection error — is the API running?" });
     } finally {
       setBusy(false);
     }
@@ -111,113 +110,141 @@ export default function AgentConsole() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-6 py-2">
-        <label className="text-xs text-gray-500">Model</label>
+      {/* Model bar */}
+      <div className="flex items-center gap-3 border-b border-line px-7 py-2.5">
+        <span className="eyebrow">Model</span>
         <input
           list="model-presets"
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          placeholder={availableModels.length ? "Pick a model…" : "no provider connected"}
-          className="w-60 rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:border-emerald-500"
+          placeholder={availableModels.length ? "pick a model…" : "no provider connected"}
+          className="nums w-52 rounded-md border border-line bg-surface px-2.5 py-1 text-[12px] text-ink outline-none focus:border-brand"
         />
         <datalist id="model-presets">
           {availableModels.map((m) => (
             <option key={m} value={m} />
           ))}
         </datalist>
-        <div className="flex items-center gap-2 text-[11px]">
+        <div className="ml-auto flex items-center gap-3 text-[11px]">
           {providers.map((p) => (
             <span
               key={p.id}
               title={p.reason ?? "connected"}
-              className={
-                p.connected ? "text-emerald-600" : "text-gray-300 line-through"
-              }
+              className="flex items-center gap-1.5"
             >
-              {p.connected ? "●" : "○"} {p.label}
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  p.connected ? "bg-brand" : "bg-faint/40"
+                }`}
+              />
+              <span className={p.connected ? "text-muted" : "text-faint/60"}>
+                {p.label}
+              </span>
             </span>
           ))}
         </div>
       </div>
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-6">
-        {items.length === 0 && (
-          <div className="text-sm text-gray-400">
-            Describe the campaign you want to create — e.g. &ldquo;brand awareness
-            for founders &amp; CTOs in New York and London, large companies&rdquo;.
-          </div>
-        )}
-        {items.map((it, i) => {
-          if (it.kind === "user")
-            return (
-              <div key={i} className="text-right">
-                <div className="inline-block max-w-[75%] whitespace-pre-wrap rounded-2xl bg-emerald-600 px-4 py-2 text-sm text-white">
-                  {it.text}
-                </div>
+
+      {/* Conversation */}
+      <div ref={scrollRef} className="flex-1 overflow-auto">
+        <div className="mx-auto max-w-3xl space-y-4 px-6 py-7">
+          {items.length === 0 && (
+            <div className="mt-10 text-center">
+              <div className="font-display text-2xl text-ink">
+                What are we launching?
               </div>
-            );
-          if (it.kind === "assistant")
-            return (
-              <div key={i}>
-                <div className="inline-block max-w-[75%] whitespace-pre-wrap rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-900">
-                  {it.text || "…"}
-                </div>
-              </div>
-            );
-          if (it.kind === "tool")
-            return (
-              <div key={i} className="text-xs text-gray-500">
-                <span className="font-mono">⚙ {it.name}</span>
-                {it.summary === null ? (
-                  <span className="text-gray-400"> …</span>
-                ) : (
-                  <span className="text-gray-400"> → {it.summary}</span>
-                )}
-              </div>
-            );
-          if (it.kind === "proposal")
-            return (
-              <ProposalCard
-                key={i}
-                campaign={it.campaign}
-                awaiting={awaiting && i === items.length - 1}
-                onApprove={() => decide(true)}
-                onReject={() => decide(false)}
-              />
-            );
-          return (
-            <div
-              key={i}
-              className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"
-            >
-              ✓ Draft created.{" "}
-              {it.result?.stub ? "(M1 stub — not yet on LinkedIn.)" : ""}
+              <p className="mx-auto mt-2 max-w-md text-[13px] text-muted">
+                e.g. &ldquo;brand awareness for founders &amp; CTOs in New York and
+                London, large companies, €5k, June 16–30&rdquo;. Pick a model above
+                to begin.
+              </p>
             </div>
-          );
-        })}
+          )}
+
+          {items.map((it, i) => {
+            if (it.kind === "user")
+              return (
+                <div key={i} className="flex justify-end">
+                  <div className="rise max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-[14px] text-paper">
+                    {it.text}
+                  </div>
+                </div>
+              );
+            if (it.kind === "assistant")
+              return (
+                <div key={i} className="flex justify-start">
+                  <div className="rise max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-md border border-line bg-surface px-4 py-2.5 text-[14px] leading-relaxed text-ink">
+                    {it.text || "…"}
+                  </div>
+                </div>
+              );
+            if (it.kind === "tool")
+              return (
+                <div key={i} className="flex items-center gap-2 pl-1 text-[12px]">
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      it.summary === null ? "bg-brand live-dot" : "bg-brand/40"
+                    }`}
+                  />
+                  <span className="nums text-muted">{it.name}</span>
+                  {it.summary && (
+                    <span className="nums truncate text-faint">
+                      → {it.summary}
+                    </span>
+                  )}
+                </div>
+              );
+            if (it.kind === "proposal")
+              return (
+                <ProposalCard
+                  key={i}
+                  campaign={it.campaign}
+                  awaiting={awaiting && i === items.length - 1}
+                  onApprove={() => decide(true)}
+                  onReject={() => decide(false)}
+                />
+              );
+            return (
+              <div
+                key={i}
+                className="rise flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft px-4 py-3 text-[13px] text-brand-strong"
+              >
+                <span className="text-base">✓</span>
+                <span>
+                  Draft created.
+                  {it.result?.stub ? " (Stub — not yet sent to LinkedIn.)" : ""}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="flex gap-2 border-t border-gray-200 bg-white p-4">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder={
-            !model
-              ? "Pick a model above to start…"
-              : awaiting
-                ? "Approve or reject the draft above…"
-                : "Message the agent…"
-          }
-          disabled={busy || !model}
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 disabled:bg-gray-50"
-        />
-        <button
-          onClick={send}
-          disabled={busy || !model}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-        >
-          {busy ? "…" : "Send"}
-        </button>
+      {/* Composer */}
+      <div className="border-t border-line px-6 py-4">
+        <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-xl border border-line bg-surface px-2 py-1.5 focus-within:border-brand">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && send()}
+            placeholder={
+              !model
+                ? "Pick a model above to start…"
+                : awaiting
+                  ? "Approve or reject the draft above…"
+                  : "Describe your campaign…"
+            }
+            disabled={busy || !model}
+            className="flex-1 bg-transparent px-2 py-1.5 text-[14px] text-ink outline-none placeholder:text-faint disabled:opacity-60"
+          />
+          <button
+            onClick={send}
+            disabled={busy || !model}
+            className="rounded-lg bg-brand px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-brand-strong disabled:opacity-40"
+          >
+            {busy ? "…" : "Send"}
+          </button>
+        </div>
       </div>
     </div>
   );
