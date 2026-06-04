@@ -104,15 +104,38 @@ async def preview_targeting(audience: dict[str, Any]) -> dict[str, Any]:
     return {"resolved_facets": facets, "unresolved": resolved.unresolved}
 
 
+async def _unresolved_targeting(campaign: dict[str, Any]) -> dict[str, list[str]]:
+    """Resolve every line item's audience and collect what LinkedIn can't match.
+
+    Run at propose time against the real API, so the proposal reflects exactly
+    what the publish step will target — nothing is guessed. Best-effort: if the
+    API is unavailable here, return empty (create re-resolves anyway).
+    """
+    merged: dict[str, list[str]] = {}
+    try:
+        async with _client() as client:
+            resolver = TargetingResolver(client)
+            for line_item in campaign.get("line_items", []):
+                audience = Audience.model_validate(line_item["targeting"]["audience"])
+                resolved = await resolver.resolve(audience)
+                for facet, names in resolved.unresolved.items():
+                    bucket = merged.setdefault(facet, [])
+                    bucket.extend(n for n in names if n not in bucket)
+    except Exception:  # noqa: BLE001 — best-effort preview; publish re-resolves
+        return {}
+    return merged
+
+
 @tool
-def propose_campaign(campaign: dict[str, Any]) -> str:
+async def propose_campaign(campaign: dict[str, Any]) -> str:
     """Present the finished campaign draft to the operator and wait for approval.
 
-    First validates that the draft is complete (objective, line items with
-    budget/flight/targeting, ads with a creative source). If anything is missing
+    First validates the draft is complete (objective, line items with
+    budget/flight/targeting, ads with a creative source); if anything is missing
     it is returned for you to ask the operator about — the draft is NOT shown
-    until it's complete. Do NOT call create_linkedin_draft until this approves.
-    `campaign` is a yieldagent Campaign dict.
+    until complete. Then resolves the targeting against LinkedIn so the operator
+    sees exactly what will (and won't) be targeted. Do NOT call
+    create_linkedin_draft until this approves. `campaign` is a Campaign dict.
     """
     issues = campaign_issues(campaign)
     if issues:
@@ -121,7 +144,10 @@ def propose_campaign(campaign: dict[str, Any]) -> str:
             "for anything missing, then call propose_campaign again:\n- "
             + "\n- ".join(issues)
         )
-    decision = interrupt({"type": "proposal", "campaign": campaign})
+    unresolved = await _unresolved_targeting(campaign)
+    decision = interrupt(
+        {"type": "proposal", "campaign": campaign, "unresolved": unresolved}
+    )
     if decision.get("approved"):
         return "Operator approved. Call create_linkedin_draft with the same campaign."
     reason = decision.get("reason") or "no reason given"

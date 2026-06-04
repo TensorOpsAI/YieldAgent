@@ -54,7 +54,13 @@ async def _drive(inp: Any, thread_id: str, model: str | None) -> AsyncIterator[E
         for node, update in chunk.items():
             if node == "__interrupt__":
                 value = getattr(update[0], "value", {}) or {}
-                yield ("proposal", {"campaign": value.get("campaign", {})})
+                yield (
+                    "proposal",
+                    {
+                        "campaign": value.get("campaign", {}),
+                        "unresolved": value.get("unresolved", {}),
+                    },
+                )
                 continue
             if not isinstance(update, dict):
                 continue
