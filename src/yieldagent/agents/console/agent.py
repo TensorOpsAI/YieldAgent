@@ -15,7 +15,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
 from yieldagent.agents.console.llm import console_model_name
-from yieldagent.agents.console.prompts import CONSOLE_SYSTEM_PROMPT
+from yieldagent.agents.console.prompts import console_system_prompt
 from yieldagent.agents.console.tools import CONSOLE_TOOLS
 from yieldagent.agents.defaults import resolve_model_name
 
@@ -33,7 +33,7 @@ def get_console_agent(model_name: str | None = None) -> Any:
         _AGENTS[name] = create_react_agent(
             model,
             CONSOLE_TOOLS,
-            prompt=CONSOLE_SYSTEM_PROMPT,
+            prompt=console_system_prompt(),
             checkpointer=_CHECKPOINTER,
         )
     return _AGENTS[name]

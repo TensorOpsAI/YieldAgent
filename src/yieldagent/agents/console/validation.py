@@ -45,9 +45,11 @@ def campaign_issues(data: dict[str, Any]) -> list[str]:
                 f"Ad {ad.name!r} references unknown line item {ad.line_item_name!r}."
             )
         creative = ad.creative
-        if not creative.existing_post_urn and not creative.landing_url:
+        has_copy = bool(creative.headline or creative.primary_text)
+        if not creative.existing_post_urn and not has_copy:
             issues.append(
-                f"Ad {ad.name!r} needs a creative source: an existing post URN to "
-                "sponsor, or ad copy + a landing URL to mint a new post."
+                f"Ad {ad.name!r} needs a creative: an existing post URN to sponsor, "
+                "or ad copy (a headline or primary text) for a new post. A landing "
+                "URL is optional."
             )
     return issues

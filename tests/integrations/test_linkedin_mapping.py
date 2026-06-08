@@ -4,14 +4,69 @@ from __future__ import annotations
 
 from datetime import date
 
-from yieldagent.domain import Audience, CreativeAsset, Flight
+from yieldagent.domain import (
+    Audience,
+    BiddingStrategy,
+    CreativeAsset,
+    Flight,
+    LineItem,
+    Money,
+    Targeting,
+)
 from yieldagent.integrations.linkedin.mapping import (
+    campaign_bidding,
     campaign_run_schedule,
     creative_content_reference,
     flight_to_run_schedule,
     line_item_locale,
     post_article_content,
 )
+
+
+def _line_item(**overrides) -> LineItem:
+    base = {
+        "name": "li",
+        "budget": Money(amount="100", currency="EUR"),
+        "flight": Flight(start_date=date(2026, 7, 1), end_date=date(2026, 7, 15)),
+        "targeting": Targeting(audience=Audience(description="x", geos=["PT"])),
+    }
+    base.update(overrides)
+    return LineItem(**base)
+
+
+def test_campaign_bidding_maximum_delivery_is_auto_cpm() -> None:
+    out = campaign_bidding(_line_item(), "BRAND_AWARENESS")
+    assert out["cost_type"] == "CPM"
+    assert out["optimization_target_type"] == "MAX_IMPRESSION"
+    assert out["unit_cost"] is None
+
+
+def test_campaign_bidding_manual_sets_unit_cost_and_no_target() -> None:
+    li = _line_item(
+        bidding_strategy=BiddingStrategy.manual,
+        bid_amount=Money(amount="12", currency="EUR"),
+    )
+    out = campaign_bidding(li, "BRAND_AWARENESS")
+    assert out["cost_type"] == "CPC"
+    assert out["optimization_target_type"] is None
+    assert out["unit_cost"] == {"amount": "12", "currencyCode": "EUR"}
+
+
+def test_campaign_bidding_cost_cap_keeps_target_and_carries_cap() -> None:
+    li = _line_item(
+        bidding_strategy=BiddingStrategy.cost_cap,
+        bid_amount=Money(amount="8", currency="EUR"),
+    )
+    out = campaign_bidding(li, "WEBSITE_VISITS")
+    assert out["cost_type"] == "CPM"
+    assert out["optimization_target_type"] == "MAX_CLICK"
+    assert out["unit_cost"] == {"amount": "8", "currencyCode": "EUR"}
+
+
+def test_campaign_bidding_respects_optimization_goal_override() -> None:
+    li = _line_item(optimization_goal="MAX_REACH")
+    out = campaign_bidding(li, "BRAND_AWARENESS")
+    assert out["optimization_target_type"] == "MAX_REACH"
 
 
 def test_flight_to_run_schedule_emits_epoch_millis() -> None:
@@ -78,10 +133,20 @@ def test_creative_content_reference_wraps_post_urn() -> None:
 
 
 def test_line_item_locale_strips_and_uppercases_geo() -> None:
-    # A padded/lowercase code must still produce a valid locale, not fall back to US.
-    locale = line_item_locale(Audience(description="x", geos=["pt "]))
-    assert locale == {"country": "PT", "language": "en"}
+    # A padded/lowercase code for a supported country must still resolve to its
+    # locale (e.g. Germany -> de_DE), not fall back to US.
+    locale = line_item_locale(Audience(description="x", geos=["de "]))
+    assert locale == {"country": "DE", "language": "de"}
 
 
 def test_line_item_locale_defaults_to_us_for_unknown_code() -> None:
     assert line_item_locale(Audience(description="x", geos=["ZZ"]))["country"] == "US"
+
+
+def test_line_item_locale_falls_back_when_country_has_no_supported_locale() -> None:
+    # Portugal has no LinkedIn-supported interface locale (en_PT is rejected and
+    # Portuguese only exists as pt_BR), so it must fall back to en_US.
+    assert line_item_locale(Audience(description="x", geos=["PT"])) == {
+        "country": "US",
+        "language": "en",
+    }
