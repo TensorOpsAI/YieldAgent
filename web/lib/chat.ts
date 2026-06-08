@@ -81,7 +81,7 @@ export type ChatEvent =
   | { event: "thread"; data: { thread_id: string } }
   | { event: "token"; data: { text: string } }
   | { event: "tool_call"; data: { name: string; args: ToolArgs } }
-  | { event: "tool_result"; data: { name: string; summary: string } }
+  | { event: "tool_result"; data: { name: string; summary: string; result?: unknown } }
   | {
       event: "proposal";
       data: {

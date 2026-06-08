@@ -17,11 +17,19 @@ import { ProposalCard } from "@/components/ProposalCard";
 import { ModelPicker } from "@/components/ModelPicker";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { Markdown } from "@/components/Markdown";
+import { ToolStep } from "@/components/ToolStep";
 
 type Item =
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string }
-  | { kind: "tool"; name: string; args: ToolArgs; summary: string | null; count: number }
+  | {
+      kind: "tool";
+      name: string;
+      args: ToolArgs;
+      summary: string | null;
+      result?: unknown;
+      count: number;
+    }
   | {
       kind: "proposal";
       campaign: Campaign;
@@ -31,39 +39,6 @@ type Item =
       forecast: Forecast;
     }
   | { kind: "created"; result: CreatedResult };
-
-const asString = (v: unknown): string | undefined =>
-  typeof v === "string" ? v : undefined;
-
-function toolLabel(name: string, args: ToolArgs): string {
-  const platform = asString(args?.platform);
-  const on = platform ? ` on ${platform}` : "";
-  switch (name) {
-    case "list_ad_platforms":
-      return "Checking available platforms";
-    case "describe_platform":
-      return `Reading ${platform ?? "platform"} rules`;
-    case "list_targeting_options": {
-      const kind = asString(args?.kind)?.replace(/_/g, " ") ?? "targeting options";
-      return `Looking up ${kind}`;
-    }
-    case "search_targeting": {
-      const facet = asString(args?.facet) ?? "targeting";
-      const query = asString(args?.query);
-      return `Searching ${facet}${query ? ` for “${query}”` : ""}`;
-    }
-    case "preview_targeting":
-      return `Resolving targeting${on}`;
-    case "estimate_reach":
-      return "Estimating audience reach";
-    case "propose_campaign":
-      return "Preparing the proposal";
-    case "create_draft":
-      return `Creating the draft${on}`;
-    default:
-      return name;
-  }
-}
 
 export default function AgentConsole() {
   const [items, setItems] = useState<Item[]>([]);
@@ -145,7 +120,7 @@ export default function AgentConsole() {
           if (last?.kind === "tool" && last.name === ev.data.name) {
             return [
               ...prev.slice(0, -1),
-              { ...last, count: last.count + 1, summary: null },
+              { ...last, count: last.count + 1, summary: null, result: undefined },
             ];
           }
           return [
@@ -171,7 +146,7 @@ export default function AgentConsole() {
           const real = prev.length - 1 - idx;
           const copy = [...prev];
           const t = copy[real] as Extract<Item, { kind: "tool" }>;
-          copy[real] = { ...t, summary: ev.data.summary };
+          copy[real] = { ...t, summary: ev.data.summary, result: ev.data.result };
           return copy;
         });
         break;
@@ -315,25 +290,14 @@ export default function AgentConsole() {
               );
             if (it.kind === "tool")
               return (
-                <div
+                <ToolStep
                   key={i}
-                  className="flex items-center gap-2.5 pl-1 text-[13px]"
-                  title={it.summary ?? undefined}
-                >
-                  {it.summary === null ? (
-                    <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-brand/25 border-t-brand" />
-                  ) : (
-                    <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-brand/15 text-[9px] text-brand">
-                      ✓
-                    </span>
-                  )}
-                  <span className="text-muted">{toolLabel(it.name, it.args)}</span>
-                  {it.count > 1 && (
-                    <span className="rounded bg-paper px-1 text-[11px] text-faint ring-1 ring-line">
-                      ×{it.count}
-                    </span>
-                  )}
-                </div>
+                  name={it.name}
+                  args={it.args}
+                  summary={it.summary}
+                  result={it.result}
+                  count={it.count}
+                />
               );
             if (it.kind === "proposal")
               return (
