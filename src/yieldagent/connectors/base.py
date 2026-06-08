@@ -17,6 +17,30 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 
+class PublishError(Exception):
+    """A draft could not be created — the neutral error every connector raises.
+
+    Carries structured `problems` (`[{field, message, fix}]`) when the platform
+    reported fixable issues, and `fixable` to tell the agent whether re-proposing a
+    corrected draft can succeed. `rolled_back` is True when partial work was torn
+    down. This keeps the agent's generic create tool free of any platform-specific
+    exception type.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        problems: list[dict[str, Any]] | None = None,
+        fixable: bool = False,
+        rolled_back: bool = False,
+    ) -> None:
+        self.problems = problems or []
+        self.fixable = fixable
+        self.rolled_back = rolled_back
+        super().__init__(message)
+
+
 @dataclass(frozen=True)
 class ConnectorManifest:
     """Self-describing summary of a platform connector.
@@ -80,9 +104,24 @@ class Connector(Protocol):
         """Pre-flight a campaign, returning fixable problems (empty = ready)."""
         ...
 
+    async def preview_plan(self, campaign: dict[str, Any]) -> dict[str, Any]:
+        """Resolve every line item for the proposal: `{unresolved, reach}`.
+
+        Best-effort — API trouble yields empty maps and never blocks proposing.
+        """
+        ...
+
+    async def preview_ads(self, campaign: dict[str, Any]) -> dict[str, Any]:
+        """A display preview per ad (headline/text/url/image), keyed by ad name."""
+        ...
+
     async def publish_draft(self, campaign: dict[str, Any]) -> dict[str, Any]:
-        """Create the campaign as a DRAFT and return the created URNs/ids."""
+        """Create the campaign as a DRAFT and return the created URNs/ids.
+
+        Raises `PublishError` (with structured problems when fixable) on failure.
+        Includes a `manage_url` in the result when the platform has one.
+        """
         ...
 
 
-__all__ = ["Connector", "ConnectorManifest"]
+__all__ = ["Connector", "ConnectorManifest", "PublishError"]
