@@ -38,8 +38,8 @@ a tool result reports problems, follow its next_step.
 Domain model — Campaign{name, objective, line_items[], ads[]}; LineItem{name,
 budget{amount, currency}, flight{start_date, end_date}, targeting{audience}};
 Ad{name, line_item_name, creative{name, headline, primary_text, landing_url,
-existing_post_urn}}; Audience{description, geos, seniorities, job_functions,
-industries, job_titles, skills, company_sizes}. Use one LineItem and one Ad by default.
+existing_post_urn}}; Audience{description, geos, and the platform's own audience
+facets — take them from describe_platform}. Use one LineItem and one Ad by default.
 """
 
 
