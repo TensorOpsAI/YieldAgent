@@ -19,7 +19,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-from .brief import Audience, CreativeAsset, Flight, Money, Objective
+from .primitives import Audience, CreativeAsset, Flight, Money, Objective
 
 
 class CampaignStatus(StrEnum):

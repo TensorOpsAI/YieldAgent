@@ -1,8 +1,9 @@
-"""Campaign brief — the input contract handed to a campaign-setup agent.
+"""Shared, platform-neutral domain primitives.
 
-A Brief is platform-agnostic. A planner (human or upstream agent) writes one;
-a downstream agent reads it and produces a draft Campaign for one or more
-platforms.
+The building blocks every agent and connector speaks in — objective, flight
+window, money, KPI, audience, and creative asset — composed by `campaign.py`
+into a Campaign. Platform-agnostic on purpose; each integration maps these onto
+its own surface.
 """
 
 from __future__ import annotations
@@ -109,16 +110,3 @@ class CreativeAsset(BaseModel):
             "Direct Sponsored Content post — use it to advertise content published by hand."
         ),
     )
-
-
-class Brief(BaseModel):
-    advertiser: str
-    product: str
-    objective: Objective
-    kpis: list[KPI]
-    budget: Money
-    flight: Flight
-    audience: Audience
-    creatives: list[CreativeAsset]
-    platforms: list[str] = Field(description="Lowercase platform keys, e.g. ['meta']")
-    notes: str | None = None

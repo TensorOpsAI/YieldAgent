@@ -1,8 +1,7 @@
-"""Shared defaults for the campaign-setup agents.
+"""Shared model defaults for the agents.
 
-Kept platform-neutral so both the Meta (`campaign_setup`) and LinkedIn
-(`linkedin_setup`) entry points import from one place instead of reaching into
-each other's modules.
+Kept in one platform-neutral place (the console's LLM helpers import from here)
+so model selection lives in a single module.
 """
 
 from __future__ import annotations

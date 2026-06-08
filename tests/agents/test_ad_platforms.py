@@ -19,10 +19,8 @@ def test_linkedin_reflects_config_presence(monkeypatch) -> None:
     assert linkedin["can_create"] is False
 
 
-def test_meta_is_connected_but_not_yet_creatable(monkeypatch) -> None:
-    monkeypatch.setenv("META_ACCESS_TOKEN", "x")
-    monkeypatch.setenv("META_AD_ACCOUNT_ID", "act_1")
-    monkeypatch.setenv("META_PAGE_ID", "1")
+def test_meta_is_planned_not_yet_available() -> None:
+    # Meta has no connector yet, so it always shows as coming soon regardless of env.
     meta = {p["platform"]: p for p in ad_platform_status()}["Meta"]
-    assert meta["connected"] is True
+    assert meta["connected"] is False
     assert meta["can_create"] is False

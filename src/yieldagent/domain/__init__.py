@@ -8,7 +8,6 @@ responsible for mapping these types onto its own surface (Meta calls a LineItem
 an "Ad Set", Google calls it an "Ad Group", etc.).
 """
 
-from .brief import KPI, Audience, Brief, CreativeAsset, Flight, Money, Objective
 from .campaign import (
     Ad,
     BiddingStrategy,
@@ -19,12 +18,12 @@ from .campaign import (
     PlatformPlan,
     Targeting,
 )
+from .primitives import KPI, Audience, CreativeAsset, Flight, Money, Objective
 
 __all__ = [
     "Ad",
     "Audience",
     "BiddingStrategy",
-    "Brief",
     "Campaign",
     "CampaignPlan",
     "CampaignStatus",

@@ -44,7 +44,7 @@ FACET_STAFF_COUNT = "urn:li:adTargetingFacet:staffCountRanges"
 # the unresolved codes are still surfaced so the caller knows to fix them.
 DEFAULT_GEO_URN = "urn:li:geo:103644278"
 
-# Brief company-size buckets -> LinkedIn staffCountRange URNs. In targetingCriteria
+# Company-size buckets -> LinkedIn staffCountRange URNs. In targetingCriteria
 # the value is a range tuple URN (min,max), NOT the SIZE_* enum the facet listing
 # returns; the open-ended top bucket uses INT_MAX (2147483647) as its upper bound.
 COMPANY_SIZE_TO_STAFF_RANGE: dict[str, str] = {
