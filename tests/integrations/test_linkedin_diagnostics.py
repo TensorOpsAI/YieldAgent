@@ -166,6 +166,8 @@ async def test_describe_constraints_reports_account_currency_and_rules() -> None
     assert c["budget"]["min_daily"] == "10"
     # The field spec lists required and optional fields so the agent can offer them.
     assert "objective" in c["fields"]["required"]
+    # Valid objective values are declared, so the agent uses "awareness" not free text.
+    assert "awareness" in c["objectives"]
     optional_keys = {f["key"] for f in c["fields"]["optional"]}
     assert {"daily_budget", "bidding_strategy", "audience_network"} <= optional_keys
     # Wired fields are marked settable so the agent knows it can apply them.

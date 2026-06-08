@@ -128,8 +128,9 @@ async def propose_campaign(platform: str, campaign: dict[str, Any]) -> str:
     issues = plan_issues(_plan(platform, campaign))
     if issues:
         return (
-            "The draft isn't ready to propose. Resolve these — ask the operator "
-            "for anything missing, then call propose_campaign again:\n- "
+            "Not ready yet. Fix these yourself and call propose_campaign again — only "
+            "ask the operator about ones you genuinely can't resolve (e.g. a missing "
+            "budget or audience). Wording/format issues you fix silently:\n- "
             + "\n- ".join(issues)
         )
     connector = get_connector(platform)

@@ -12,7 +12,7 @@ from typing import Any
 
 from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt import ToolNode, create_react_agent
 
 from yieldagent.agents.console.llm import console_model_name
 from yieldagent.agents.console.prompts import console_system_prompt
@@ -30,9 +30,15 @@ def get_console_agent(model_name: str | None = None) -> Any:
     name = model_name or console_model_name()
     if name not in _AGENTS:
         model = init_chat_model(resolve_model_name(name))
+        # Wrap tools so a recoverable mistake (e.g. a wrong facet/kind) is returned
+        # to the model as a tool message — it then self-corrects — instead of raising
+        # and crashing the whole turn. GraphInterrupt (the approval pause) is still
+        # propagated, so the proposal flow is unaffected. Without this, models that
+        # guess a tool argument wrong on the first try fail hard.
+        tools = ToolNode(CONSOLE_TOOLS, handle_tool_errors=True)
         _AGENTS[name] = create_react_agent(
             model,
-            CONSOLE_TOOLS,
+            tools,
             prompt=console_system_prompt(),
             checkpointer=_CHECKPOINTER,
         )
