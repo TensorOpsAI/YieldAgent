@@ -153,7 +153,7 @@ export default function AgentConsole() {
         break;
       case "tool_result":
         setItems((prev) => {
-          // Match the most recent unfilled row for THIS tool by name — two
+          // Match the most recent unfilled row for THIS tool by name - two
           // different tools can be in flight at once (the collapse only merges
           // consecutive identical names), so position alone could mis-assign.
           const idx = [...prev]
@@ -195,7 +195,7 @@ export default function AgentConsole() {
     setBusy(true);
     // The graph is paused awaiting approval iff THIS turn ended on a proposal.
     // Deriving it here (instead of a sticky flag) means an error or a normal
-    // reply correctly clears it — so the next message can't mis-route to resume
+    // reply correctly clears it - so the next message can't mis-route to resume
     // a thread that isn't actually paused.
     let endedOnProposal = false;
     try {
@@ -205,7 +205,7 @@ export default function AgentConsole() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "connection error";
-      push({ kind: "assistant", text: `⚠ ${msg} — is the API running?` });
+      push({ kind: "assistant", text: `⚠ ${msg}. Is the API running?` });
     } finally {
       setBusy(false);
       setAwaiting(endedOnProposal);
@@ -218,7 +218,7 @@ export default function AgentConsole() {
     setInput("");
     push({ kind: "user", text });
     // If a proposal is awaiting a decision, the graph is paused inside
-    // propose_campaign — a fresh run() would corrupt its history. Route the
+    // propose_campaign - a fresh run() would corrupt its history. Route the
     // typed message as feedback so the agent revises and re-proposes.
     if (awaiting && threadId.current) {
       setAwaiting(false);
@@ -270,26 +270,21 @@ export default function AgentConsole() {
                   What are we launching?
                 </div>
                 <p className="mx-auto mt-2 max-w-md text-[14px] text-muted">
-                  Just tell me in plain language — no brief needed. I&rsquo;ll ask
-                  for anything I&rsquo;m missing before drafting.
+                  Just tell me in plain language. I&rsquo;ll confirm the platform,
+                  learn its rules, and ask for whatever it needs before drafting.
                 </p>
               </div>
               <div className="mx-auto mt-6 max-w-md rounded-xl border border-line bg-surface p-4">
-                <div className="eyebrow mb-2">To create a draft I need</div>
+                <div className="eyebrow mb-2">How it works</div>
                 <ul className="space-y-1.5 text-[14px] text-muted">
                   {[
-                    ["Objective", "awareness, leads, engagement…"],
-                    ["Budget", "amount + currency, e.g. €5,000"],
-                    ["Flight", "start & end dates"],
-                    ["Audience", "geos + who to target"],
-                    ["Creative", "an existing post, or copy + landing URL"],
-                  ].map(([k, v]) => (
-                    <li key={k} className="flex gap-2">
-                      <span className="text-brand">›</span>
-                      <span>
-                        <span className="font-medium text-ink">{k}</span>
-                        <span className="text-faint"> — {v}</span>
-                      </span>
+                    "Tell me what you want to advertise",
+                    "I confirm the platform and read its requirements",
+                    "I draft it; you review every field and approve",
+                  ].map((step, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="nums text-brand">{i + 1}</span>
+                      <span>{step}</span>
                     </li>
                   ))}
                 </ul>
@@ -361,7 +356,7 @@ export default function AgentConsole() {
                   Draft created on LinkedIn
                 </div>
                 <p className="mt-1.5 pl-7 text-[13px] leading-relaxed text-muted">
-                  Saved as a <span className="font-medium text-ink">DRAFT</span> — it
+                  Saved as a <span className="font-medium text-ink">DRAFT</span>. It
                   can&rsquo;t spend until you activate it manually in Campaign Manager.
                   {it.result?.campaign_id && (
                     <span className="nums"> Group {it.result.campaign_id}.</span>
@@ -416,7 +411,7 @@ export default function AgentConsole() {
                   ? "Pick a model to start…"
                   : awaiting
                     ? "Approve, reject, or type a change…"
-                    : "Describe your campaign…  (Shift+Enter for a new line)"
+                    : "Describe your campaign…"
               }
               disabled={busy || !model}
               className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-faint disabled:opacity-60"

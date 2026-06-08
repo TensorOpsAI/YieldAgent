@@ -27,7 +27,7 @@ const BIDDING_LABELS: Record<string, string> = {
 };
 
 /** Full delivery picture for a line item, with defaults shown so the operator
- *  sees every field — whether set explicitly or left on the platform's default. */
+ *  sees every field - whether set explicitly or left on the platform's default. */
 function deliveryRows(li: LineItem): { label: string; value: string }[] {
   const money = (m?: Money | null) => (m ? `${m.amount} ${m.currency}` : null);
   const rows: { label: string; value: string }[] = [];
@@ -93,7 +93,7 @@ export function ProposalCard({
   const lineItems = campaign?.line_items ?? [];
   const ads = campaign?.ads ?? [];
   // Any ad whose creative is freshly authored (not an existing post) means
-  // approving will PUBLISH a new post on the org page — warn the operator.
+  // approving will PUBLISH a new post on the org page - warn the operator.
   const willCreatePost = Object.values(previews ?? {}).some(
     (p) => p.source === "ad_copy",
   );
@@ -125,7 +125,7 @@ export function ProposalCard({
         </div>
         <div className="mt-0.5 text-[13px] text-muted">
           Objective ·{" "}
-          <span className="nums text-ink">{campaign?.objective ?? "—"}</span>
+          <span className="nums text-ink">{campaign?.objective ?? "n/a"}</span>
         </div>
 
         {unresolvedCount > 0 && (
@@ -157,7 +157,7 @@ export function ProposalCard({
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[12px] font-medium text-amber-800">
-                    Audience under 300 — too small to run on LinkedIn
+                    Audience under the platform minimum, too small to run
                   </span>
                 )}
               </div>
@@ -172,7 +172,7 @@ export function ProposalCard({
                       return (
                         <span
                           key={v}
-                          title={dropped ? "No LinkedIn match — won't be targeted" : ""}
+                          title={dropped ? "No match, won't be targeted" : ""}
                           className={`rounded-md px-1.5 py-0.5 text-[12px] ring-1 ${
                             dropped
                               ? "text-faint line-through ring-amber-200 bg-amber-50/50"
@@ -234,7 +234,7 @@ export function ProposalCard({
                     {preview ? (
                       <div className="mt-2 flex gap-3">
                         {preview.image_url && (
-                          // Ephemeral external LinkedIn media URL (expires) — next/image
+                          // Ephemeral external LinkedIn media URL (expires) - next/image
                           // optimization isn't appropriate, so a plain img is correct here.
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -280,7 +280,7 @@ export function ProposalCard({
           <div className="mt-4">
             {willCreatePost && (
               <div className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-                Heads up — approving will <strong>publish a new post</strong> on your
+                Heads up: approving will <strong>publish a new post</strong> on your
                 LinkedIn page, then create the draft. No existing post is being sponsored.
               </div>
             )}
