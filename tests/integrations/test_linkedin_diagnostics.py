@@ -157,6 +157,9 @@ async def test_describe_constraints_reports_account_currency_and_rules() -> None
     assert c["currency"] == "EUR"
     assert c["budget"]["currency_must_match_account"] is True
     assert c["audience"]["min_size"] == AUDIENCE_MIN_SIZE
+    # The connector declares its own audience facets (so the prompt needn't list them).
+    assert "geos" in c["audience"]["facets"]
+    assert "seniorities" in c["audience"]["facets"]
     assert c["creative"]["reshares_sponsorable"] is False
     assert c["locale"]["auto_selected"] is True
     # Budget reports both a total and a per-day minimum.
