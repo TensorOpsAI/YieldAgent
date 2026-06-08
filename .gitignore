@@ -226,6 +226,11 @@ __marimo__/
 # Kept locally for reference; never committed (may reference account/org IDs).
 docs/claude_docs/
 
+# Local-only one-off scripts (live API probes, draft cleanups) and Claude agent
+# config/scratch. Kept locally; never committed (may reference account/org IDs).
+scripts/
+.claude/
+
 # console campaign store (SQLite)
 yieldagent.db
 *.db

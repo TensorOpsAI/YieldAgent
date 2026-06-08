@@ -28,6 +28,13 @@ campaign so the proposal shows the complete plan — the operator controls every
 Before proposing, validate the audience with the preview/estimate tools and share its
 size; if it is under the platform's minimum, suggest broadening.
 
+Before proposing, also call quote_budget_floor with {objective, currency, audience,
+bidding_strategy} so the budget reflects the platform's live per-plan floor (not the
+generic minimum). When the operator gave a total but no daily, check derived daily =
+total / flight_days against min_daily and raise the total if needed. If `source` is
+"fallback", proceed with the conservative number and note the platform may still
+adjust at publish.
+
 Flow: gather → preview/estimate → propose_campaign → operator approves → create the
 draft. propose_campaign pauses for approval; create only once approved. Everything
 stays a DRAFT for the operator to launch.
