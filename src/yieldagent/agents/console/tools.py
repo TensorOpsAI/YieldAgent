@@ -68,12 +68,12 @@ async def describe_platform(platform: str) -> dict[str, Any]:
 
 @tool
 async def list_targeting_options(platform: str, kind: str) -> list[str]:
-    """List a platform's closed targeting taxonomy for a given kind.
+    """List a platform's closed targeting taxonomy for a given `kind`.
 
-    `kind` is e.g. "seniorities", "job_functions", or "company_sizes". Returns the
-    real option names — use them exactly. Seniority is the LEVEL (Manager, Director,
-    VP, CXO); target job roles (Founder, CEO, "VP of Engineering") via
-    search_targeting("titles", …) instead.
+    The valid kinds are the platform's audience facets (see describe_platform).
+    Returns the real option names — use them exactly, never invent one. Any
+    per-platform nuance (e.g. how a facet differs from a free-text one) is in
+    describe_platform's audience notes.
     """
     return await get_connector(platform).list_taxonomy(kind)
 
@@ -94,11 +94,10 @@ async def search_targeting(platform: str, facet: str, query: str) -> list[str]:
 async def preview_targeting(platform: str, audience: dict[str, Any]) -> dict[str, Any]:
     """Resolve an audience to platform targeting and report what matched.
 
-    `audience` is a yieldagent Audience dict (geos, seniorities, job_functions,
-    industries, job_titles, skills, company_sizes). Geos are country-level (ISO
-    alpha-2): for a city, target its country and say so. Returns the resolved facets
-    and any `unresolved` names that matched nothing — never guessed. Use this to
-    confirm targeting with the operator before proposing.
+    `audience` is a yieldagent Audience dict using the platform's audience facets
+    (see describe_platform). Returns the resolved facets and any `unresolved` names
+    that matched nothing — never guessed. Use this to confirm targeting with the
+    operator before proposing.
     """
     return await get_connector(platform).preview_targeting(audience)
 

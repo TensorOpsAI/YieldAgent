@@ -162,7 +162,26 @@ async def describe_constraints(client: LinkedInClient) -> dict[str, Any]:
             ),
         },
         "flight": {"must_start_today_or_later": True},
-        "audience": {"min_size": AUDIENCE_MIN_SIZE},
+        "audience": {
+            "min_size": AUDIENCE_MIN_SIZE,
+            # The audience facets this platform supports — the agent fills only these
+            # (a Meta connector would advertise geos/age/genders/interests instead).
+            "facets": [
+                "geos",
+                "seniorities",
+                "job_functions",
+                "industries",
+                "job_titles",
+                "skills",
+                "company_sizes",
+            ],
+            "notes": [
+                "geos are country-level (ISO alpha-2); for a city, target its country.",
+                "Seniority is the LEVEL (Manager, Director, VP, CXO) — target job roles "
+                "(Founder, CEO, 'VP of Engineering') as job_titles via search_targeting, "
+                "not as seniorities.",
+            ],
+        },
         "creative": {
             "can_sponsor_existing_post": True,
             "reshares_sponsorable": False,  # only original organization posts
