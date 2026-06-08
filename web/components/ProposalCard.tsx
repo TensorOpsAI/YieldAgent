@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import type { Audience, Campaign, LineItem, Ad, Previews, Reach } from "@/lib/chat";
+import type {
+  Audience,
+  Campaign,
+  LineItem,
+  Ad,
+  Money,
+  Previews,
+  Reach,
+} from "@/lib/chat";
 
 type Facet = { label: string; key: string; values: string[] };
 
@@ -10,6 +18,34 @@ function formatReach(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
   if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
   return String(n);
+}
+
+const BIDDING_LABELS: Record<string, string> = {
+  maximum_delivery: "Maximum delivery (auto)",
+  cost_cap: "Cost cap",
+  manual: "Manual",
+};
+
+/** Full delivery picture for a line item, with defaults shown so the operator
+ *  sees every field — whether set explicitly or left on the platform's default. */
+function deliveryRows(li: LineItem): { label: string; value: string }[] {
+  const money = (m?: Money | null) => (m ? `${m.amount} ${m.currency}` : null);
+  const rows: { label: string; value: string }[] = [];
+  const daily = money(li.daily_budget);
+  if (daily) rows.push({ label: "Daily budget", value: daily });
+  rows.push({
+    label: "Bidding",
+    value: BIDDING_LABELS[li.bidding_strategy ?? "maximum_delivery"],
+  });
+  const bid = money(li.bid_amount);
+  if (bid) rows.push({ label: "Bid / cap", value: bid });
+  rows.push({ label: "Optimization", value: li.optimization_goal ?? "Auto" });
+  rows.push({
+    label: "Audience expansion",
+    value: li.audience_expansion ? "On" : "Off",
+  });
+  rows.push({ label: "Audience network", value: li.audience_network ? "On" : "Off" });
+  return rows;
 }
 
 function facets(audience: Audience | undefined): Facet[] {
@@ -56,6 +92,11 @@ export function ProposalCard({
 
   const lineItems = campaign?.line_items ?? [];
   const ads = campaign?.ads ?? [];
+  // Any ad whose creative is freshly authored (not an existing post) means
+  // approving will PUBLISH a new post on the org page — warn the operator.
+  const willCreatePost = Object.values(previews ?? {}).some(
+    (p) => p.source === "ad_copy",
+  );
   const unresolvedCount = Object.values(unresolved ?? {}).reduce(
     (n, v) => n + v.length,
     0,
@@ -146,6 +187,18 @@ export function ProposalCard({
                 </div>
               ))}
             </div>
+
+            <div className="mt-3 border-t border-line pt-3">
+              <div className="eyebrow mb-1.5">Delivery</div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                {deliveryRows(li).map((r) => (
+                  <div key={r.label} className="flex justify-between gap-2 text-[12px]">
+                    <span className="text-faint">{r.label}</span>
+                    <span className="nums text-right text-ink">{r.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ))}
 
@@ -224,24 +277,36 @@ export function ProposalCard({
         )}
 
         {awaiting && (
-          <div className="mt-4 flex items-center gap-2">
-            <button
-              onClick={() => decide(onApprove)}
-              disabled={submitting}
-              className="rounded-lg bg-brand px-4 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
-            >
-              {submitting ? "Creating…" : "Approve & create draft"}
-            </button>
-            <button
-              onClick={() => decide(onReject)}
-              disabled={submitting}
-              className="rounded-lg border border-line px-4 py-2.5 text-[14px] font-medium text-muted transition-colors hover:border-ink/20 hover:text-ink disabled:opacity-50"
-            >
-              Reject
-            </button>
-            <span className="ml-auto text-[12px] text-faint">
-              Nothing is created until you approve.
-            </span>
+          <div className="mt-4">
+            {willCreatePost && (
+              <div className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+                Heads up — approving will <strong>publish a new post</strong> on your
+                LinkedIn page, then create the draft. No existing post is being sponsored.
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => decide(onApprove)}
+                disabled={submitting}
+                className="rounded-lg bg-brand px-4 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
+              >
+                {submitting
+                  ? "Creating…"
+                  : willCreatePost
+                    ? "Approve, create post & draft"
+                    : "Approve & create draft"}
+              </button>
+              <button
+                onClick={() => decide(onReject)}
+                disabled={submitting}
+                className="rounded-lg border border-line px-4 py-2.5 text-[14px] font-medium text-muted transition-colors hover:border-ink/20 hover:text-ink disabled:opacity-50"
+              >
+                Reject
+              </button>
+              <span className="ml-auto text-[12px] text-faint">
+                Nothing is created until you approve.
+              </span>
+            </div>
           </div>
         )}
       </div>

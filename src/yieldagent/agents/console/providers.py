@@ -23,7 +23,6 @@ PROVIDERS: list[dict[str, Any]] = [
         "env": "GOOGLE_API_KEY",
         "models": [
             "gemini-3.1-pro-preview",
-            "gemini-3.5-pro",
             "gemini-3.5-flash",
             "gemini-3.1-flash-lite",
         ],
@@ -32,7 +31,7 @@ PROVIDERS: list[dict[str, Any]] = [
         "id": "openai",
         "label": "OpenAI",
         "env": "OPENAI_API_KEY",
-        "models": ["gpt-5.5", "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.4", "gpt-5.4-mini"],
+        "models": ["gpt-5.5", "gpt-5.5-pro", "gpt-5.4", "gpt-5.4-mini"],
     },
     {
         "id": "anthropic",

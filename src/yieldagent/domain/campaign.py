@@ -32,11 +32,42 @@ class Targeting(BaseModel):
     audience: Audience
 
 
+class BiddingStrategy(StrEnum):
+    """How the platform bids in the auction.
+
+    maximum_delivery — let the platform spend the full budget for the most results
+    (auto bid, no price needed). cost_cap — chase results while keeping average cost
+    under a target. manual — set the bid yourself. cost_cap and manual need bid_amount.
+    """
+
+    maximum_delivery = "maximum_delivery"
+    cost_cap = "cost_cap"
+    manual = "manual"
+
+
 class LineItem(BaseModel):
     name: str
     budget: Money
     flight: Flight
     targeting: Targeting
+
+    # Optional delivery controls. Absent means the agent/platform picks a sensible
+    # default (maximum delivery, no daily cap, no expansion, LinkedIn-only). The
+    # operator can set any of these to take control; each connector maps what it
+    # supports and ignores the rest.
+    daily_budget: Money | None = None
+    bidding_strategy: BiddingStrategy | None = None
+    bid_amount: Money | None = Field(
+        default=None, description="Bid or cost cap; required for cost_cap and manual bidding."
+    )
+    optimization_goal: str | None = Field(
+        default=None,
+        description="Override the auto optimization goal; omit to derive it from the objective.",
+    )
+    audience_expansion: bool | None = None
+    audience_network: bool | None = Field(
+        default=None, description="Deliver off-platform via the Audience Network."
+    )
 
 
 class Ad(BaseModel):
