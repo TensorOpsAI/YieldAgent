@@ -37,6 +37,50 @@ def _encode_targeting_criteria(criteria: dict[str, Any]) -> str:
             urns_enc = ",".join(quote(str(u), safe="") for u in urns)
             clauses.append(f"(or:({facet_enc}:List({urns_enc})))")
     return f"(include:(and:List({','.join(clauses)})))"
+
+
+def _parse_forecast(data: dict[str, Any], budget: dict[str, str]) -> dict[str, Any]:
+    """Reduce an adSupplyForecasts response to the flight-total ranges the UI shows.
+
+    Reads the CUSTOM granularity window (the sum over the requested timeRange) and
+    derives CPM (cost per 1,000 impressions) and CTR (%) from LinkedIn's per-million
+    metrics. Only includes the metrics the response actually carried.
+    """
+    currency = budget.get("currencyCode", "")
+
+    def custom_range(metric: str) -> dict[str, Any] | None:
+        for el in data.get("elements", []):
+            if el.get("metricType") == metric and el.get("granularity") == "CUSTOM":
+                series = el.get("timeSeries") or []
+                if series:
+                    return series[0].get("adForecastRange")
+        return None
+
+    out: dict[str, Any] = {}
+    if (imp := custom_range("IMPRESSION")) is not None:
+        out["impressions"] = {"low": int(imp.get("lowEnd", 0)), "high": int(imp.get("highEnd", 0))}
+    if (clk := custom_range("CLICK")) is not None:
+        out["clicks"] = {"low": int(clk.get("lowEnd", 0)), "high": int(clk.get("highEnd", 0))}
+    if (spend := custom_range("SPENDING")) is not None:
+        out["spend"] = {
+            "low": round(float(spend.get("lowEnd", 0)), 2),
+            "high": round(float(spend.get("highEnd", 0)), 2),
+            "currency": currency,
+        }
+    if (cpm := custom_range("COST_PER_MILLION_IMPRESSIONS")) is not None:
+        out["cpm"] = {
+            "low": round(float(cpm.get("lowEnd", 0)) / 1000, 2),
+            "high": round(float(cpm.get("highEnd", 0)) / 1000, 2),
+            "currency": currency,
+        }
+    if (cpmi := custom_range("CLICK_PER_MILLION_IMPRESSIONS")) is not None:
+        out["ctr"] = {
+            "low": round(float(cpmi.get("lowEnd", 0)) / 1_000_000 * 100, 2),
+            "high": round(float(cpmi.get("highEnd", 0)) / 1_000_000 * 100, 2),
+        }
+    return out
+
+
 # LinkedIn's politicalIntent is a String enum, not a boolean. Sending a bool
 # fails with "enum type is not backed by a String".
 _POLITICAL_INTENT_VALUES = {"POLITICAL", "NOT_POLITICAL", "NOT_DECLARED"}
@@ -331,6 +375,11 @@ class LinkedInClient(BaseHttpClient):
         key = quote(str(image_urn), safe="")
         return await self._request("GET", f"/images/{key}")
 
+    async def get_video(self, video_urn: str) -> dict[str, Any]:
+        """Resolve an `urn:li:video:…` to its poster `thumbnail` URL for display."""
+        key = quote(str(video_urn), safe="")
+        return await self._request("GET", f"/videos/{key}")
+
     async def audience_count(self, criteria: dict[str, Any]) -> dict[str, int]:
         """Estimate how many LinkedIn members match a targetingCriteria.
 
@@ -351,6 +400,63 @@ class LinkedInClient(BaseHttpClient):
         elements = response.json().get("elements", [])
         first = elements[0] if elements else {}
         return {"total": int(first.get("total", 0)), "active": int(first.get("active", 0))}
+
+    async def ad_supply_forecast(
+        self,
+        *,
+        campaign_type: str,
+        time_range: tuple[int, int],
+        targeting_criteria: dict[str, Any],
+        total_budget: dict[str, str] | None = None,
+        daily_budget: dict[str, str] | None = None,
+        objective_type: str | None = None,
+        optimization_target: str | None = None,
+        audience_expansion: bool = False,
+        audience_network: bool = False,
+    ) -> dict[str, Any]:
+        """Forecast impressions/clicks/spend for an audience + budget + bid.
+
+        Calls the `adSupplyForecasts` criteriaV2 finder and returns the totals over
+        the flight (the CUSTOM granularity window) as low/high ranges, deriving CPM
+        and CTR. Like audienceCounts, the targetingCriteria must be pre-encoded into
+        the query string, so this bypasses the params-based `_request`.
+        """
+
+        def _budget(b: dict[str, str]) -> str:
+            return f"(amount:{b['amount']},currencyCode:{b['currencyCode']})"
+
+        start, end = time_range
+        parts = [
+            "q=criteriaV2",
+            f"account={quote(self.config.account_urn, safe='')}",
+            f"campaignType={campaign_type}",
+            f"timeRange=(start:{start},end:{end})",
+            f"targetingCriteria={_encode_targeting_criteria(targeting_criteria)}",
+        ]
+        if total_budget:
+            parts.append(f"totalBudget={_budget(total_budget)}")
+        if daily_budget:
+            parts.append(f"dailyBudget={_budget(daily_budget)}")
+        if objective_type:
+            parts.append(f"objectiveType={objective_type}")
+        if optimization_target:
+            parts.append(f"optimizationTarget={optimization_target}")
+        if audience_expansion:
+            parts.append("enableAudienceExpansion=true")
+        if audience_network:
+            parts.append("enableAudienceNetwork=true")
+
+        url = httpx.URL(f"{_BASE_URL}/adSupplyForecasts").copy_with(
+            query="&".join(parts).encode()
+        )
+        response = await self._http.request("GET", url, headers=self._headers)
+        if response.status_code >= 400:
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = response.text
+            raise LinkedInError(response.status_code, payload)
+        return _parse_forecast(response.json(), (total_budget or daily_budget or {}))
 
     async def typeahead_targeting_entities(self, *, facet: str, query: str) -> list[dict[str, Any]]:
         """Search a targeting facet's open taxonomy (industries, titles, skills).

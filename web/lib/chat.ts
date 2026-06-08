@@ -57,10 +57,22 @@ export type AdPreview = {
   text: string | null;
   url: string | null;
   image_url: string | null;
+  media_type?: "image" | "video" | null;
 };
 export type Previews = Record<string, AdPreview>;
 /** Estimated audience reach (total members) keyed by line-item name. */
 export type Reach = Record<string, number>;
+
+// LinkedIn ad-supply forecast over the flight (low/high estimate ranges).
+export type Range = { low: number; high: number };
+export type MoneyRange = { low: number; high: number; currency: string };
+export type Forecast = {
+  impressions?: Range;
+  clicks?: Range;
+  spend?: MoneyRange;
+  cpm?: MoneyRange;
+  ctr?: Range; // percentages, e.g. 0.84 = 0.84%
+};
 
 export type ToolArgs = Record<string, unknown>;
 
@@ -77,6 +89,7 @@ export type ChatEvent =
         unresolved?: Record<string, string[]>;
         previews?: Previews;
         reach?: Reach;
+        forecast?: Forecast;
       };
     }
   | { event: "created"; data: { result: CreatedResult } }

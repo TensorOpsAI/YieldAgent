@@ -152,6 +152,24 @@ async def test_ad_preview_from_existing_post(monkeypatch) -> None:
     assert p["image_url"] == "https://media/x.jpg"
 
 
+async def test_ad_preview_from_video_post(monkeypatch) -> None:
+    """A video post previews with its poster thumbnail and media_type 'video'."""
+
+    class _WithVideo(_FakeLinkedIn):
+        async def get_video(self, _urn: str) -> dict:
+            return {"thumbnail": "https://media/videocover.jpg", "downloadUrl": "https://m/v.mp4"}
+
+    post = {"commentary": "Watch our launch", "content": {"media": {"id": "urn:li:video:42"}}}
+    monkeypatch.setattr(li_connector, "client_from_env", lambda: _WithVideo(post=post))
+    campaign = {"ads": [{"name": "Ad", "creative": {"existing_post_urn": "urn:li:ugcPost:7"}}]}
+    previews = await li_connector.LinkedInConnector().preview_ads(campaign)
+    p = previews["Ad"]
+    assert p["source"] == "existing_post"
+    assert p["media_type"] == "video"
+    assert p["image_url"] == "https://media/videocover.jpg"
+    assert p["text"] == "Watch our launch"
+
+
 async def test_ad_preview_from_ad_copy(monkeypatch) -> None:
     monkeypatch.setattr(li_connector, "client_from_env", lambda: _FakeLinkedIn())
     campaign = {
@@ -173,6 +191,7 @@ async def test_ad_preview_from_ad_copy(monkeypatch) -> None:
         "text": "TensorOps helps you ship AI",
         "url": "https://tensorops.ai",
         "image_url": None,
+        "media_type": None,
     }
 
 

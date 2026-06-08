@@ -7,6 +7,7 @@ import {
   type ChatEvent,
   type Campaign,
   type CreatedResult,
+  type Forecast,
   type Previews,
   type Reach,
   type ToolArgs,
@@ -15,6 +16,7 @@ import { fetchProviders, type Provider } from "@/lib/api";
 import { ProposalCard } from "@/components/ProposalCard";
 import { ModelPicker } from "@/components/ModelPicker";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
+import { Markdown } from "@/components/Markdown";
 
 type Item =
   | { kind: "user"; text: string }
@@ -26,6 +28,7 @@ type Item =
       unresolved: Record<string, string[]>;
       previews: Previews;
       reach: Reach;
+      forecast: Forecast;
     }
   | { kind: "created"; result: CreatedResult };
 
@@ -179,6 +182,7 @@ export default function AgentConsole() {
           unresolved: ev.data.unresolved ?? {},
           previews: ev.data.previews ?? {},
           reach: ev.data.reach ?? {},
+          forecast: ev.data.forecast ?? {},
         });
         break;
       case "created":
@@ -304,8 +308,8 @@ export default function AgentConsole() {
             if (it.kind === "assistant")
               return (
                 <div key={i} className="flex justify-start">
-                  <div className="rise max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-md border border-line bg-surface px-4 py-2.5 text-[15px] leading-relaxed text-ink">
-                    {it.text || "…"}
+                  <div className="rise max-w-[85%] rounded-2xl rounded-bl-md border border-line bg-surface px-4 py-2.5 text-[15px] leading-relaxed text-ink">
+                    <Markdown>{it.text || "…"}</Markdown>
                   </div>
                 </div>
               );
@@ -339,6 +343,7 @@ export default function AgentConsole() {
                   unresolved={it.unresolved}
                   previews={it.previews}
                   reach={it.reach}
+                  forecast={it.forecast}
                   awaiting={awaiting && i === items.length - 1}
                   onApprove={() => decide(true)}
                   onReject={() => decide(false)}
