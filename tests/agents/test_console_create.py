@@ -1,8 +1,9 @@
 """Tests for the create-draft tool's result shape and the runtime's routing.
 
 Covers the failure paths that must NOT look like success in the UI: an
-incomplete campaign, a LinkedIn publish error, and the runtime turning each into
-an `error` event rather than a `created` (false-success) one.
+incomplete campaign, a publish error, and the runtime turning each into an
+`error` event rather than a `created` (false-success) one. Also the connector's
+ad-preview builder, which must be best-effort and never raise.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from typing import Any
 import pytest
 
 from yieldagent.agents.console import runtime, tools
+from yieldagent.connectors import linkedin as li_connector
 
 
 def _complete() -> dict[str, Any]:
@@ -39,21 +41,25 @@ def _complete() -> dict[str, Any]:
 
 
 async def test_create_draft_incomplete_returns_structured_failure() -> None:
-    result = await tools.create_linkedin_draft.ainvoke({"campaign": {"name": "x"}})
+    result = await tools.create_draft.ainvoke(
+        {"platform": "linkedin", "campaign": {"name": "x"}}
+    )
     assert result["created"] is False
     assert "incomplete" in result["error"].lower()
     assert result["issues"]
 
 
 async def test_create_draft_publish_error_is_caught_not_raised(monkeypatch) -> None:
-    """A LinkedIn failure must come back as created=False, never an exception."""
+    """A platform failure must come back as created=False, never an exception."""
     from yieldagent.integrations.linkedin import server as li_server
 
     async def boom(_campaign: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("publish failed: 403 not allowed")
 
     monkeypatch.setattr(li_server, "publish_draft_campaign", boom)
-    result = await tools.create_linkedin_draft.ainvoke({"campaign": _complete()})
+    result = await tools.create_draft.ainvoke(
+        {"platform": "linkedin", "campaign": _complete()}
+    )
     assert result["created"] is False
     assert "403 not allowed" in result["error"]
 
@@ -69,7 +75,7 @@ class _FakeAgent:
 
 
 def _tool_message(content: str) -> SimpleNamespace:
-    return SimpleNamespace(type="tool", name="create_linkedin_draft", content=content)
+    return SimpleNamespace(type="tool", name="create_draft", content=content)
 
 
 async def _events(monkeypatch, content: str) -> list[tuple[str, dict]]:
@@ -87,9 +93,9 @@ async def test_runtime_emits_created_on_success(monkeypatch) -> None:
 
 
 async def test_runtime_emits_error_on_structured_failure(monkeypatch) -> None:
-    content = json.dumps({"created": False, "error": "LinkedIn did not create the draft: 403"})
+    content = json.dumps({"created": False, "error": "Platform did not create the draft: 403"})
     events = await _events(monkeypatch, content)
-    assert ("error", {"message": "LinkedIn did not create the draft: 403"}) in events
+    assert ("error", {"message": "Platform did not create the draft: 403"}) in events
     assert not any(name == "created" for name, _ in events)
 
 
@@ -102,7 +108,7 @@ async def test_runtime_emits_error_on_raw_exception_string(monkeypatch) -> None:
 
 
 class _FakeLinkedIn:
-    """Async-context stand-in for the LinkedIn client used by _ad_previews."""
+    """Async-context stand-in for the LinkedIn client used by preview_ads."""
 
     def __init__(self, post: dict | None = None, image: dict | None = None) -> None:
         self._post = post or {}
@@ -133,11 +139,11 @@ async def test_ad_preview_from_existing_post(monkeypatch) -> None:
         },
     }
     monkeypatch.setattr(
-        tools, "client_from_env",
+        li_connector, "client_from_env",
         lambda: _FakeLinkedIn(post=post, image={"downloadUrl": "https://media/x.jpg"}),
     )
     campaign = {"ads": [{"name": "Ad1", "creative": {"existing_post_urn": "urn:li:share:9"}}]}
-    previews = await tools._ad_previews(campaign)
+    previews = await li_connector.LinkedInConnector().preview_ads(campaign)
     p = previews["Ad1"]
     assert p["source"] == "existing_post"
     assert p["headline"] == "Setting floors without killing win rate"
@@ -147,7 +153,7 @@ async def test_ad_preview_from_existing_post(monkeypatch) -> None:
 
 
 async def test_ad_preview_from_ad_copy(monkeypatch) -> None:
-    monkeypatch.setattr(tools, "client_from_env", lambda: _FakeLinkedIn())
+    monkeypatch.setattr(li_connector, "client_from_env", lambda: _FakeLinkedIn())
     campaign = {
         "ads": [
             {
@@ -160,7 +166,7 @@ async def test_ad_preview_from_ad_copy(monkeypatch) -> None:
             }
         ]
     }
-    previews = await tools._ad_previews(campaign)
+    previews = await li_connector.LinkedInConnector().preview_ads(campaign)
     assert previews["Ad2"] == {
         "source": "ad_copy",
         "headline": "Scale your startup",
@@ -175,9 +181,9 @@ async def test_ad_preview_best_effort_on_post_failure(monkeypatch) -> None:
         async def get_post(self, _urn: str) -> dict:
             raise RuntimeError("post fetch failed")
 
-    monkeypatch.setattr(tools, "client_from_env", lambda: _Boom())
+    monkeypatch.setattr(li_connector, "client_from_env", lambda: _Boom())
     campaign = {"ads": [{"name": "Ad3", "creative": {"existing_post_urn": "urn:li:share:9"}}]}
-    previews = await tools._ad_previews(campaign)
+    previews = await li_connector.LinkedInConnector().preview_ads(campaign)
     # a failed fetch still yields a sparse preview, never raises
     assert previews["Ad3"]["source"] == "existing_post"
     assert previews["Ad3"]["headline"] is None
