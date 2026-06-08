@@ -14,7 +14,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from yieldagent.domain import Campaign
+from yieldagent.domain import Campaign, CampaignPlan
 
 
 def campaign_issues(data: dict[str, Any]) -> list[str]:
@@ -52,4 +52,31 @@ def campaign_issues(data: dict[str, Any]) -> list[str]:
                 "or ad copy (a headline or primary text) for a new post. A landing "
                 "URL is optional."
             )
+    return issues
+
+
+def plan_issues(data: dict[str, Any]) -> list[str]:
+    """Completeness issues for a `CampaignPlan` across all its platforms.
+
+    Validates each platform's campaign with `campaign_issues`. With one platform
+    the messages are unprefixed (identical to single-platform today); with several,
+    each issue is prefixed with its platform so the agent knows where to look. An
+    empty plan (no platforms) is itself an issue.
+    """
+    try:
+        plan = CampaignPlan.model_validate(data)
+    except ValidationError as exc:
+        return [
+            f"{'.'.join(str(p) for p in err['loc']) or 'plan'}: {err['msg']}"
+            for err in exc.errors()
+        ]
+
+    if not plan.platforms:
+        return ["Add at least one platform to the campaign plan."]
+
+    single = len(plan.platforms) == 1
+    issues: list[str] = []
+    for pp in plan.platforms:
+        for issue in campaign_issues(pp.campaign.model_dump(mode="json")):
+            issues.append(issue if single else f"[{pp.platform}] {issue}")
     return issues
