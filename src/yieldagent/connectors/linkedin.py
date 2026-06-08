@@ -11,12 +11,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from yieldagent.domain import Audience, Campaign
+from yieldagent.domain import Audience, BiddingStrategy, Campaign
 from yieldagent.integrations.linkedin.client import client_from_env
 from yieldagent.integrations.linkedin.config import LinkedInConfig
 from yieldagent.integrations.linkedin.diagnostics import (
     describe_constraints,
+    fallback_floor,
     preflight_problems,
+    quote_budget_floor,
 )
 from yieldagent.integrations.linkedin.mapping import (
     DEFAULT_CAMPAIGN_TYPE,
@@ -114,6 +116,46 @@ class LinkedInConnector:
         async with client_from_env() as client:
             resolved = await TargetingResolver(client).resolve(parsed)
             return await client.audience_count(resolved.criteria)
+
+    async def quote_budget_floor(self, plan: dict[str, Any]) -> dict[str, Any]:
+        """Live per-plan floor via `adBudgetPricing`; falls back to the table.
+
+        `plan` may carry `objective`, `currency`, `audience`, `bidding_strategy`.
+        Missing fields are tolerated — without an objective we can only return
+        the conservative fallback. Audience is resolved to LinkedIn targeting
+        criteria when present, so the quote reflects the actual targeting.
+        """
+        objective = (plan or {}).get("objective")
+        currency = (plan or {}).get("currency")
+        audience = (plan or {}).get("audience")
+        strategy_raw = (plan or {}).get("bidding_strategy")
+        try:
+            strategy = BiddingStrategy(strategy_raw) if strategy_raw else None
+        except ValueError:
+            strategy = None
+
+        if not _configured():
+            return fallback_floor(currency)
+
+        criteria: dict[str, Any] | None = None
+        try:
+            async with client_from_env() as client:
+                if audience:
+                    try:
+                        parsed_audience = Audience.model_validate(audience)
+                        resolved = await TargetingResolver(client).resolve(parsed_audience)
+                        criteria = resolved.criteria
+                    except Exception:  # noqa: BLE001 — audience is optional for the quote
+                        criteria = None
+                return await quote_budget_floor(
+                    client,
+                    objective=objective,
+                    currency=currency,
+                    targeting_criteria=criteria,
+                    bidding_strategy=strategy,
+                )
+        except Exception:  # noqa: BLE001 — never raise; fallback is always usable
+            return fallback_floor(currency)
 
     async def validate(self, campaign: dict[str, Any]) -> list[dict[str, Any]]:
         parsed = Campaign.model_validate(campaign)

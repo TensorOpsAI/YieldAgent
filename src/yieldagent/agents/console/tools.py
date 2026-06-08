@@ -115,6 +115,26 @@ async def estimate_reach(platform: str, audience: dict[str, Any]) -> dict[str, i
 
 
 @tool
+async def quote_budget_floor(platform: str, plan: dict[str, Any]) -> dict[str, Any]:
+    """Ask the platform for the live minimum budget for the plan you're about to propose.
+
+    Call this AFTER objective and audience are set but BEFORE propose_campaign, so
+    the budget you show the operator is one the platform will actually accept. The
+    floor depends on (account, objective, audience, bidding) and a number that
+    looked right last week may not today.
+
+    `plan` carries what you already know: {objective, currency, audience?,
+    bidding_strategy?}. Returns {min_daily{amount,currency}, min_total{amount,
+    currency}, source: "live"|"fallback", notes?}. When the total budget is given
+    without a daily, the platform derives daily = total / flight_days — that
+    derived daily must clear min_daily, so a short flight needs a proportionally
+    larger total. If `source` is "fallback", the live quote was unavailable; treat
+    the numbers as advisory and warn the operator the platform may still reject.
+    """
+    return await get_connector(platform).quote_budget_floor(plan)
+
+
+@tool
 async def propose_campaign(platform: str, campaign: dict[str, Any]) -> str:
     """Present the finished campaign draft to the operator and wait for approval.
 
@@ -244,6 +264,7 @@ CONSOLE_TOOLS = [
     search_targeting,
     preview_targeting,
     estimate_reach,
+    quote_budget_floor,
     propose_campaign,
     create_draft,
 ]

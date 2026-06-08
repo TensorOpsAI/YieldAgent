@@ -458,6 +458,55 @@ class LinkedInClient(BaseHttpClient):
             raise LinkedInError(response.status_code, payload)
         return _parse_forecast(response.json(), (total_budget or daily_budget or {}))
 
+    async def ad_budget_pricing(
+        self,
+        *,
+        campaign_type: str,
+        objective_type: str,
+        targeting_criteria: dict[str, Any] | None = None,
+        optimization_target: str | None = None,
+        bid_type: str | None = None,
+        match_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Ask LinkedIn for the real per-plan budget floor and bid suggestions.
+
+        Calls the `adBudgetPricing` criteriaV2 finder, which returns the live
+        daily/lifetime budget minimums for the exact (account, objective,
+        audience, bidding) tuple — the only authoritative source for "what is the
+        minimum I can spend" since LinkedIn's floor varies by all of those. Like
+        `audienceCounts` and `adSupplyForecasts`, the targetingCriteria must be
+        pre-encoded into the query string, so this bypasses `_request`.
+
+        Returns the raw response dict on success. Callers parse it defensively
+        because LinkedIn evolves the response shape across API versions.
+        """
+        parts = [
+            "q=criteriaV2",
+            f"account={quote(self.config.account_urn, safe='')}",
+            f"campaignType={campaign_type}",
+            f"objectiveType={objective_type}",
+        ]
+        if targeting_criteria is not None:
+            parts.append(f"targetingCriteria={_encode_targeting_criteria(targeting_criteria)}")
+        if optimization_target:
+            parts.append(f"optimizationTargetType={optimization_target}")
+        if bid_type:
+            parts.append(f"bidType={bid_type}")
+        if match_type:
+            parts.append(f"matchType={match_type}")
+
+        url = httpx.URL(f"{_BASE_URL}/adBudgetPricing").copy_with(
+            query="&".join(parts).encode()
+        )
+        response = await self._http.request("GET", url, headers=self._headers)
+        if response.status_code >= 400:
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = response.text
+            raise LinkedInError(response.status_code, payload)
+        return response.json()
+
     async def typeahead_targeting_entities(self, *, facet: str, query: str) -> list[dict[str, Any]]:
         """Search a targeting facet's open taxonomy (industries, titles, skills).
 

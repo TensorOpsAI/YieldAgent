@@ -27,7 +27,7 @@ class _FakeClient:
         return {"currency": self._currency}
 
 
-def _campaign(amount: str = "100", currency: str = "EUR", start: str = "2026-06-09") -> Campaign:
+def _campaign(amount: str = "200", currency: str = "EUR", start: str = "2026-06-09") -> Campaign:
     return Campaign.model_validate(
         {
             "name": "c",
@@ -76,7 +76,7 @@ def _campaign_with(**li_extra) -> Campaign:
             "line_items": [
                 {
                     "name": "li",
-                    "budget": {"amount": "100", "currency": "EUR"},
+                    "budget": {"amount": "200", "currency": "EUR"},
                     "flight": {"start_date": "2026-06-09", "end_date": "2026-06-23"},
                     "targeting": {"audience": {"description": "x", "geos": ["PT"]}},
                     **li_extra,
@@ -102,6 +102,33 @@ async def test_preflight_accepts_manual_bidding_with_bid_amount() -> None:
 async def test_preflight_flags_daily_budget_below_minimum() -> None:
     problems = await _problems(_campaign_with(daily_budget={"amount": "5", "currency": "EUR"}))
     assert any(p["field"].endswith("daily_budget") for p in problems)
+
+
+async def test_preflight_flags_derived_daily_below_minimum_short_flight() -> None:
+    # Regression for the 210 EUR / 21-day case: total/days = exactly 10/day, but
+    # LinkedIn's real per-plan floor is higher — must be caught before publish so
+    # the operator does not have to fix it manually in Campaign Manager.
+    c = _campaign_with(
+        budget={"amount": "210", "currency": "EUR"},
+        flight={"start_date": "2026-06-10", "end_date": "2026-06-30"},
+    )
+    problems = await _problems(c)
+    fields = [p["field"] for p in problems]
+    assert any(f.endswith(".budget") and f.startswith("line_items[") for f in fields), problems
+
+
+async def test_preflight_allows_total_that_clears_derived_minimum() -> None:
+    # 300 EUR over 21 days = 14.28/day, well above the 11 EUR fallback floor.
+    c = _campaign_with(
+        budget={"amount": "300", "currency": "EUR"},
+        flight={"start_date": "2026-06-10", "end_date": "2026-06-30"},
+    )
+    problems = await _problems(c)
+    derived_problems = [
+        p for p in problems
+        if p["field"].endswith(".budget") and p["field"].startswith("line_items[")
+    ]
+    assert derived_problems == []
 
 
 def test_explain_translates_input_errors() -> None:
@@ -163,7 +190,7 @@ async def test_describe_constraints_reports_account_currency_and_rules() -> None
     assert c["creative"]["reshares_sponsorable"] is False
     assert c["locale"]["auto_selected"] is True
     # Budget reports both a total and a per-day minimum.
-    assert c["budget"]["min_daily"] == "10"
+    assert c["budget"]["min_daily"] == "11"
     # The field spec lists required and optional fields so the agent can offer them.
     assert "objective" in c["fields"]["required"]
     # Valid objective values are declared, so the agent uses "awareness" not free text.
