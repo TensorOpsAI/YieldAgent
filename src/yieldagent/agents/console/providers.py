@@ -31,7 +31,7 @@ PROVIDERS: list[dict[str, Any]] = [
         "id": "openai",
         "label": "OpenAI",
         "env": "OPENAI_API_KEY",
-        "models": ["gpt-5.5", "gpt-5.5-pro", "gpt-5.4", "gpt-5.4-mini"],
+        "models": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
     },
     {
         "id": "anthropic",
