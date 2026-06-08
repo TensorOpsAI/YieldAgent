@@ -82,10 +82,10 @@ async def list_targeting_options(platform: str, kind: str) -> list[str]:
 async def search_targeting(platform: str, facet: str, query: str) -> list[str]:
     """Search a platform's open targeting taxonomy by keyword.
 
-    `facet` is e.g. "industries", "titles", or "skills". Returns relevance-ranked
-    option names (e.g. search_targeting("linkedin", "industries", "software") ->
-    ["Software Development", ...]). An empty list means no match — try another
-    query, never invent a value.
+    Pass the platform key from list_ad_platforms. `facet` is e.g. "industries",
+    "titles", or "skills". Returns relevance-ranked option names (e.g. facet
+    "industries", query "software" -> ["Software Development", ...]). An empty list
+    means no match — try another query, never invent a value.
     """
     return await get_connector(platform).search_targeting(facet, query)
 
