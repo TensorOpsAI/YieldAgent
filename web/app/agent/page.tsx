@@ -71,7 +71,7 @@ export default function AgentConsole() {
   const [model, setModel] = useState("gemini-3.5-flash");
   const threadId = useRef<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const availableModels = providers
     .filter((p) => p.connected)
@@ -104,6 +104,14 @@ export default function AgentConsole() {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight });
   }, [items]);
+
+  // Grow the composer with its content (Shift+Enter newlines), up to a cap.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
 
   const chooseModel = (m: string) => {
     setModel(m);
@@ -392,15 +400,18 @@ export default function AgentConsole() {
       <div className="border-t border-line px-6 py-4">
         <div className="mx-auto flex max-w-3xl items-center gap-2">
           <ModelPicker models={availableModels} value={model} onChange={chooseModel} />
-          <div className="flex flex-1 items-center gap-2 rounded-xl border border-line bg-surface px-2 py-1.5 focus-within:border-brand">
-            <input
+          <div className="flex flex-1 items-end gap-2 rounded-xl border border-line bg-surface px-2 py-1.5 focus-within:border-brand">
+            <textarea
               ref={inputRef}
               value={input}
+              rows={1}
               aria-label="Describe your campaign"
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                // Ignore Enter mid-IME-composition (CJK/diacritics) and Shift+Enter.
+                // Enter sends; Shift+Enter inserts a newline. Ignore Enter
+                // mid-IME-composition (CJK/diacritics) so it doesn't send early.
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
                   send();
                 }
               }}
@@ -409,17 +420,17 @@ export default function AgentConsole() {
                   ? "Pick a model to start…"
                   : awaiting
                     ? "Approve, reject, or type a change…"
-                    : "Describe your campaign…"
+                    : "Describe your campaign…  (Shift+Enter for a new line)"
               }
               disabled={busy || !model}
-              className="flex-1 bg-transparent px-2 py-1.5 text-[15px] text-ink outline-none placeholder:text-faint disabled:opacity-60"
+              className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-faint disabled:opacity-60"
             />
             <button
               onClick={send}
               disabled={busy || !model}
               aria-label="Send message"
               aria-busy={busy}
-              className="rounded-lg bg-brand px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-strong disabled:opacity-40"
+              className="shrink-0 rounded-lg bg-brand px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-strong disabled:opacity-40"
             >
               {busy ? "…" : "Send"}
             </button>
