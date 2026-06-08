@@ -54,10 +54,34 @@ def list_ad_platforms() -> list[dict[str, Any]]:
 
 
 @tool
+async def platform_constraints(platform: str) -> dict[str, Any]:
+    """Get a platform's hard rules before planning, so you propose a valid campaign
+    up front instead of guessing.
+
+    Call this right after the operator picks a platform (one where can_create is
+    true). Returns its budget minimum, account currency, flight/date rules,
+    audience floor, and creative rules. Honour these while gathering — never ask
+    the operator for something the platform sets automatically (e.g. locale).
+    """
+    key = platform.strip().lower()
+    if key != "linkedin":
+        raise ValueError(
+            f"No constraints available for {platform!r}; only 'linkedin' supports "
+            "campaign creation today (check list_ad_platforms)."
+        )
+    from yieldagent.integrations.linkedin.diagnostics import describe_constraints
+
+    async with client_from_env() as client:
+        return await describe_constraints(client)
+
+
+@tool
 async def list_seniorities() -> list[str]:
     """List LinkedIn's standardized seniority levels (e.g. Manager, Director, VP, CXO).
 
-    Use this before targeting seniority so you pick from real options.
+    Seniority is the LEVEL, not a job role: target Founder / CEO / CTO / "VP of
+    Engineering" as job TITLES via search_targeting("titles", …), and use seniority
+    only for the level. Use this before targeting seniority so you pick real options.
     """
     async with client_from_env() as client:
         items = await client.list_seniorities()
@@ -102,7 +126,8 @@ async def preview_targeting(audience: dict[str, Any]) -> dict[str, Any]:
     """Resolve an audience to LinkedIn targeting and report what matched.
 
     `audience` is a yieldagent Audience dict (geos, seniorities, job_functions,
-    industries, job_titles, skills, company_sizes). Returns the resolved facets
+    industries, job_titles, skills, company_sizes). Geos are country-level (ISO
+    alpha-2): for a city, target its country and say so. Returns the resolved facets
     and any `unresolved` names that matched no LinkedIn entity — never guessed.
     Use this to confirm targeting with the operator before proposing.
     """
@@ -295,14 +320,32 @@ async def create_linkedin_draft(campaign: dict[str, Any]) -> dict[str, Any]:
 
     # Imported lazily: pulls in the MCP server module only when actually creating.
     from yieldagent.integrations.linkedin import server as li_server
+    from yieldagent.integrations.linkedin.diagnostics import CampaignValidationError
 
     # LinkedIn has no transaction; publish_draft_campaign already rolls back any
     # partial work on failure. Surface a failure as a structured result (never
     # raise) so the UI shows a real error instead of a false "created" banner.
     try:
         result = await li_server.publish_draft_campaign(campaign)
+    except CampaignValidationError as exc:
+        # Fixable: pre-flight or LinkedIn-reported problems. Tell the operator
+        # exactly what to change, then re-propose with the corrected draft.
+        return {
+            "created": False,
+            "fixable": True,
+            "problems": exc.problems,
+            "rolled_back": exc.rolled_back,
+            "next_step": (
+                "Explain these to the operator, apply the fixes to the draft, and "
+                "call propose_campaign again. Do not retry create until re-approved."
+            ),
+        }
     except Exception as exc:  # noqa: BLE001 — report publish failures, don't crash the turn
-        return {"created": False, "error": f"LinkedIn did not create the draft: {exc}"}
+        return {
+            "created": False,
+            "fixable": False,
+            "error": f"LinkedIn did not create the draft: {exc}",
+        }
 
     config = LinkedInConfig.from_env()
     group_id = result.get("campaign_id")
@@ -340,6 +383,7 @@ async def create_linkedin_draft(campaign: dict[str, Any]) -> dict[str, Any]:
 
 CONSOLE_TOOLS = [
     list_ad_platforms,
+    platform_constraints,
     list_seniorities,
     list_job_functions,
     list_company_size_buckets,
