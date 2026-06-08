@@ -33,28 +33,30 @@ const asString = (v: unknown): string | undefined =>
   typeof v === "string" ? v : undefined;
 
 function toolLabel(name: string, args: ToolArgs): string {
+  const platform = asString(args?.platform);
+  const on = platform ? ` on ${platform}` : "";
   switch (name) {
     case "list_ad_platforms":
       return "Checking available platforms";
-    case "list_seniorities":
-      return "Looking up seniority levels";
-    case "list_job_functions":
-      return "Looking up job functions";
-    case "list_company_size_buckets":
-      return "Loading company sizes";
+    case "describe_platform":
+      return `Reading ${platform ?? "platform"} rules`;
+    case "list_targeting_options": {
+      const kind = asString(args?.kind)?.replace(/_/g, " ") ?? "targeting options";
+      return `Looking up ${kind}`;
+    }
     case "search_targeting": {
       const facet = asString(args?.facet) ?? "targeting";
       const query = asString(args?.query);
       return `Searching ${facet}${query ? ` for “${query}”` : ""}`;
     }
     case "preview_targeting":
-      return "Resolving targeting on LinkedIn";
+      return `Resolving targeting${on}`;
     case "estimate_reach":
       return "Estimating audience reach";
     case "propose_campaign":
       return "Preparing the proposal";
-    case "create_linkedin_draft":
-      return "Creating the draft on LinkedIn";
+    case "create_draft":
+      return `Creating the draft${on}`;
     default:
       return name;
   }

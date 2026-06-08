@@ -79,7 +79,7 @@ async def _drive(inp: Any, thread_id: str, model: str | None) -> AsyncIterator[E
                 if getattr(message, "type", "") == "tool":
                     name = getattr(message, "name", "")
                     content = getattr(message, "content", "")
-                    if name == "create_linkedin_draft":
+                    if name == "create_draft":
                         result = _coerce(content)
                         if isinstance(result, dict) and result.get("created"):
                             yield ("created", {"result": result})
