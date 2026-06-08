@@ -13,8 +13,10 @@ from .campaign import (
     Ad,
     BiddingStrategy,
     Campaign,
+    CampaignPlan,
     CampaignStatus,
     LineItem,
+    PlatformPlan,
     Targeting,
 )
 
@@ -24,6 +26,7 @@ __all__ = [
     "BiddingStrategy",
     "Brief",
     "Campaign",
+    "CampaignPlan",
     "CampaignStatus",
     "CreativeAsset",
     "Flight",
@@ -31,5 +34,6 @@ __all__ = [
     "LineItem",
     "Money",
     "Objective",
+    "PlatformPlan",
     "Targeting",
 ]

@@ -22,10 +22,23 @@ from langchain_core.tools import tool
 from langgraph.types import interrupt
 
 from yieldagent.agents.console.ad_platforms import ad_platform_status
-from yieldagent.agents.console.validation import campaign_issues
+from yieldagent.agents.console.validation import plan_issues
 from yieldagent.connectors import get_connector
 from yieldagent.connectors.base import PublishError
 from yieldagent.store import campaigns as store
+
+
+def _plan(platform: str, campaign: dict[str, Any]) -> dict[str, Any]:
+    """Wrap a (platform, campaign) into a one-platform CampaignPlan dict.
+
+    The CampaignPlan is the model underneath every conversation (C2); with one
+    platform it behaves exactly like the single-platform flow. Multi-platform
+    plans (C4) reuse the same shape with more entries.
+    """
+    return {
+        "name": campaign.get("name") or "Untitled",
+        "platforms": [{"platform": platform, "campaign": campaign}],
+    }
 
 
 @tool
@@ -113,7 +126,7 @@ async def propose_campaign(platform: str, campaign: dict[str, Any]) -> str:
     the operator sees exactly what will (and won't) be targeted. Do NOT call
     create_draft until this approves. `campaign` is a Campaign dict.
     """
-    issues = campaign_issues(campaign)
+    issues = plan_issues(_plan(platform, campaign))
     if issues:
         return (
             "The draft isn't ready to propose. Resolve these — ask the operator "
@@ -163,7 +176,7 @@ async def create_draft(platform: str, campaign: dict[str, Any]) -> dict[str, Any
     returns a structured result (never raises) so the UI shows a real error instead
     of a false "created" banner.
     """
-    issues = campaign_issues(campaign)
+    issues = plan_issues(_plan(platform, campaign))
     if issues:
         return {
             "created": False,
