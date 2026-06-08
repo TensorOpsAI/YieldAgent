@@ -92,7 +92,16 @@ async def _drive(inp: Any, thread_id: str, model: str | None) -> AsyncIterator[E
                             ) or "Creating the draft failed."
                             yield ("error", {"message": msg})
                     else:
-                        yield ("tool_result", {"name": name, "summary": _summarize(content)})
+                        yield (
+                            "tool_result",
+                            {
+                                "name": name,
+                                "summary": _summarize(content),
+                                # Full structured result so the UI can show it in an
+                                # expandable panel, not just the truncated summary.
+                                "result": _coerce(content),
+                            },
+                        )
 
 
 def run(message: str, thread_id: str, model: str | None = None) -> AsyncIterator[Event]:
