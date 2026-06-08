@@ -24,7 +24,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, TypedDict
 
-from yieldagent.domain import BiddingStrategy
+from yieldagent.domain import BiddingStrategy, Objective
 
 from .client import LinkedInClient, LinkedInError
 
@@ -151,6 +151,9 @@ async def describe_constraints(client: LinkedInClient) -> dict[str, Any]:
             "required": ["objective", "budget", "flight", "audience", "creative"],
             "optional": _OPTIONAL_FIELDS,
         },
+        # The exact objective values to use — so the agent picks "awareness", not
+        # free-text like "brand awareness".
+        "objectives": [o.value for o in Objective],
         "budget": {
             "min_total": str(min_total),
             "min_daily": str(min_daily),
