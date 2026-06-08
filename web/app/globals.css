@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
-/* ---- Campaign Ops — warm beige operator console ------------------------- */
+/* ---- Campaign Ops - warm beige operator console ------------------------- */
 @theme {
-  --color-paper: #ece4d6; /* warm beige — app background */
-  --color-surface: #f8f3ea; /* cream — cards */
-  --color-sand: #e4dccb; /* deeper beige — sidebar */
-  --color-ink: #2b2722; /* warm near-black — text + dark accents */
+  --color-paper: #ece4d6; /* warm beige - app background */
+  --color-surface: #f8f3ea; /* cream - cards */
+  --color-sand: #e4dccb; /* deeper beige - sidebar */
+  --color-ink: #2b2722; /* warm near-black - text + dark accents */
   --color-ink-soft: #3d382f;
   --color-muted: #6f685a; /* secondary text */
   --color-faint: #9c9484; /* tertiary text */
   --color-line: #d8cfbc; /* borders */
 
-  --color-brand: #137a53; /* forest emerald — pairs with beige */
+  --color-brand: #137a53; /* forest emerald - pairs with beige */
   --color-brand-strong: #0c5e3f;
   --color-brand-soft: #dde8d9;
 

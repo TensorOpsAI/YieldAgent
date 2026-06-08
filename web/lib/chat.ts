@@ -86,7 +86,7 @@ export type ChatEvent =
 function parseSse(chunk: string): ChatEvent | null {
   let event = "message";
   let data = "";
-  // SSE lines may end with \n or \r\n (sse-starlette emits \r\n) — tolerate both.
+  // SSE lines may end with \n or \r\n (sse-starlette emits \r\n) - tolerate both.
   for (const line of chunk.split(/\r?\n/)) {
     if (line.startsWith("event:")) event = line.slice(6).trim();
     else if (line.startsWith("data:")) data += line.slice(5).trim();
@@ -123,7 +123,7 @@ async function* streamSSE(
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    // Events are separated by a blank line — \n\n or \r\n\r\n.
+    // Events are separated by a blank line - \n\n or \r\n\r\n.
     const parts = buffer.split(/\r?\n\r?\n/);
     buffer = parts.pop() ?? "";
     for (const part of parts) {

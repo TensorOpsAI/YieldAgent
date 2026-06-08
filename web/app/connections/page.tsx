@@ -39,7 +39,7 @@ export default function Connections() {
   };
 
   // Initial load: fetch without touching `testing` (avoids a synchronous
-  // setState in the effect body — the cached providers load fast).
+  // setState in the effect body - the cached providers load fast).
   useEffect(() => {
     fetchProviders(false).then(setProviders).catch(() => undefined);
     fetchAdPlatforms().then(setAdPlatforms).catch(() => undefined);
@@ -97,7 +97,7 @@ export default function Connections() {
           )}
         </div>
         <p className="mt-2 text-[12px] text-faint">
-          Keys are verified against each provider&rsquo;s models endpoint — no
+          Keys are verified against each provider&rsquo;s models endpoint; no
           inference is spent.
         </p>
       </section>

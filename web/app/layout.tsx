@@ -13,7 +13,7 @@ const instrument = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "YieldAgent — Campaign Ops",
+  title: "YieldAgent · Campaign Ops",
   description: "Conversational ad-campaign operations.",
 };
 
