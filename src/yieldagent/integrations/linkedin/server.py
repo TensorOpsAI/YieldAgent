@@ -297,8 +297,9 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
     manual activation step in LinkedIn Campaign Manager.
 
     Returns the URNs created so the agent can present them for approval, plus a
-    `notes` block flagging any B2B targeting facet values from the Brief that
-    matched no LinkedIn entity (so they were not pushed — we never guess a URN).
+    `notes` block flagging any B2B targeting facet values from the requested
+    targeting that matched no LinkedIn entity (so they were not pushed — we never
+    guess a URN).
     """
     parsed = Campaign.model_validate(campaign)
     config = LinkedInConfig.from_env()
@@ -339,7 +340,7 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
         if unresolved_by_li:
             result["notes"]["unresolved_b2b_targeting"] = unresolved_by_li
             result["notes"]["unresolved_b2b_hint"] = (
-                "These facet values came from the Brief but matched no LinkedIn targeting "
+                "These facet values came from your targeting but matched no LinkedIn "
                 "entity (typeahead/standardized lookup returned nothing), so they were not "
                 "pushed — we never guess a URN. Add them manually in Campaign Manager before "
                 "activation, or refine the wording to match LinkedIn's taxonomy."

@@ -86,18 +86,6 @@ Every adtech agent in this repo, regardless of role, stands on the same foundati
 5. **Memory and state** (`src/yieldagent/store/`) — the saved-campaign store behind the dashboard, plus the audit trail for spend-affecting actions.
 6. **Human-in-the-loop and audit trail** — approval gates and an immutable log of every spend-affecting action with rationale. Non-negotiable when real money is moving.
 
-## Also included: the Meta brief → campaign CLI
-
-The original vertical slice still ships: a LangGraph agent that turns a markdown brief into a paused Meta campaign. It exercises the same six layers through a non-conversational flow.
-
-```bash
-pip install -e ".[meta,agent]"
-export ANTHROPIC_API_KEY=sk-ant-...
-python -m yieldagent.agents.campaign_setup briefs/example_brief.md --dry-run
-```
-
-`--dry-run` swaps the Meta MCP server for a stub: the planner LLM still runs, the human gate still fires, and the audit trail still records everything, but no API calls leave your machine. Drop the flag (with Meta credentials in `.env`) to create real PAUSED objects on a Meta **test** ad account. See [`docs/campaign-setup-agent.md`](docs/campaign-setup-agent.md) and the notebook at [`notebooks/campaign_setup.ipynb`](notebooks/campaign_setup.ipynb).
-
 ## On the same substrate, planned next
 
 | Demand-side | Supply-side |
@@ -115,32 +103,25 @@ src/yieldagent/
   domain/                  # Layer 1 — platform-neutral types (Campaign, LineItem, Ad, Audience...)
   integrations/
     linkedin/              # Layer 2 — LinkedIn client, targeting resolver, diagnostics, MCP server
-    meta/                  # Layer 2 — Meta client, mapping, MCP server
   connectors/              # Layer 3 — the uniform Connector contract + LinkedIn adapter + registry
   agents/
     console/               # the conversational agent: tools, prompts, runtime (SSE), ReAct graph
-    campaign_setup/        # the Meta brief -> draft CLI slice
   store/                   # Layer 5 — saved-campaign store (SQLite) behind the dashboard
 api/                       # FastAPI backend — chat (SSE) + dashboard REST
   main.py                  # app factory
   routes/                  # chat, providers, platforms, campaigns
 web/                       # Next.js + Tailwind console (Dashboard, Agent Console, Connections)
-briefs/                    # example brief for the Meta CLI slice
-notebooks/                 # end-to-end walkthrough with graph render
-docs/                      # architecture, integration, and brief-format docs
+docs/                      # architecture + integration docs and the console screenshots
 ```
 
 ## Documentation
 
-- **[Campaign-setup agent](docs/campaign-setup-agent.md)** — graph topology, safety guarantees, how to embed it.
 - **[LinkedIn integration](docs/linkedin-integration.md)** — client, targeting, diagnostics, env.
-- **[Meta integration](docs/meta-integration.md)** — MCP server, environment, mapping, known limits.
-- **[Brief format](docs/brief-format.md)** — what the planner LLM expects and a worked brief → Campaign example.
 - **[Web console (`web/README.md`)](web/README.md)** — frontend specifics and the SSE event contract.
 
 ## Status
 
-Early, and shaped in the open. The LinkedIn console is working end to end against a real ad account; the Meta brief CLI works against test accounts. The rest of the platform matrix and the supply-side roles are not built yet.
+Early, and shaped in the open. The LinkedIn console is working end to end against a real ad account. The rest of the platform matrix and the supply-side roles are not built yet.
 
 Issues, discussions, and proposals are welcome — especially platform connectors (Meta, Google Ads, TikTok, DV360, GAM) and supply-side workflows.
 
