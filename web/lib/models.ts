@@ -6,7 +6,7 @@ export type ModelTag = "Smart" | "Balanced" | "Fast" | "";
 const META: Record<string, ModelMeta> = {
   // Gemini
   "gemini-3.1-pro-preview": { tag: "Smart", blurb: "Deepest reasoning Gemini" },
-  "gemini-3.5-flash": { tag: "Balanced", blurb: "Fast & reliable — recommended" },
+  "gemini-3.5-flash": { tag: "Balanced", blurb: "Fast & reliable, recommended" },
   "gemini-3.1-flash-lite": { tag: "Fast", blurb: "Lightest, quickest Gemini" },
   // OpenAI
   "gpt-5.5": { tag: "Smart", blurb: "A new class of intelligence for pro work" },
@@ -22,7 +22,7 @@ export function modelMeta(id: string): ModelMeta {
   return META[id] ?? { tag: "", blurb: "" };
 }
 
-// Badge styling per tag — stays within the emerald/neutral/amber palette.
+// Badge styling per tag - stays within the emerald/neutral/amber palette.
 export const TAG_STYLES: Record<Exclude<ModelTag, "">, string> = {
   Smart: "bg-brand-soft text-brand-strong ring-brand/20",
   Balanced: "bg-paper text-muted ring-line",
