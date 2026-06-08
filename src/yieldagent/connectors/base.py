@@ -100,6 +100,22 @@ class Connector(Protocol):
         """Estimate how many members an audience reaches."""
         ...
 
+    async def quote_budget_floor(self, plan: dict[str, Any]) -> dict[str, Any]:
+        """Quote the platform's real per-plan budget minimums.
+
+        `plan` carries what the agent already knows about the campaign at quote
+        time (objective, currency, audience, bidding_strategy, flight days). The
+        connector hits the platform's pricing surface for the live floor and
+        returns a neutral shape:
+          `{min_daily: {amount, currency}, min_total: {amount, currency},
+            source: "live"|"fallback", notes?: str}`
+        `source` is "live" when the number came from the platform, "fallback"
+        when the connector returned its conservative table value (API failure,
+        missing config, etc.). Callers can act on either, but a "fallback" value
+        is advisory only — the platform will quote the real number at publish.
+        """
+        ...
+
     async def validate(self, campaign: dict[str, Any]) -> list[dict[str, Any]]:
         """Pre-flight a campaign, returning fixable problems (empty = ready)."""
         ...

@@ -128,7 +128,7 @@ def patched(monkeypatch):
 def _campaign(*creatives: CreativeAsset) -> dict:
     line_item = LineItem(
         name="LI-1",
-        budget=Money(amount=100, currency="EUR"),
+        budget=Money(amount=500, currency="EUR"),
         flight=Flight(start_date=date(2026, 7, 1), end_date=date(2026, 7, 31)),
         targeting=Targeting(audience=Audience(description="engineers", geos=["US"])),
     )
@@ -216,7 +216,7 @@ async def test_auto_bidding_uses_cpm_and_objective_target(patched) -> None:
     # bid is needed: costType CPM + optimizationTargetType MAX_LEAD.
     line_item = LineItem(
         name="LI-1",
-        budget=Money(amount=100, currency="EUR"),
+        budget=Money(amount=500, currency="EUR"),
         flight=Flight(start_date=date(2026, 7, 1), end_date=date(2026, 7, 31)),
         targeting=Targeting(audience=Audience(description="x", geos=["US"])),
     )

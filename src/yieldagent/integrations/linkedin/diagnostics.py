@@ -27,6 +27,12 @@ from typing import Any, TypedDict
 from yieldagent.domain import BiddingStrategy, Objective
 
 from .client import LinkedInClient, LinkedInError
+from .mapping import (
+    AUTO_BID_COST_TYPE,
+    DEFAULT_CAMPAIGN_TYPE,
+    OBJECTIVE_TO_LINKEDIN,
+    campaign_optimization_target,
+)
 
 
 class Problem(TypedDict):
@@ -62,16 +68,168 @@ _DEFAULT_MIN_GROUP_BUDGET = Decimal("100")
 
 # Per-day delivery minimum. A campaign's effective daily spend (total budget /
 # flight days) must clear this or it cannot deliver — so a short flight needs a
-# proportionally larger total. Observed: EUR daily min 10.
+# proportionally larger total.
+#
+# This table is LAST RESORT. LinkedIn's real per-day floor depends on
+# (account, objective, audience, bidding strategy) and is only knowable through
+# the `adBudgetPricing` finder (see `quote_budget_floor` below). The values here
+# are intentionally conservative so a fallback rarely lets a sub-floor budget
+# through to a publish-time rejection.
 _MIN_DAILY_BUDGET: dict[str, Decimal] = {
-    "EUR": Decimal("10"),
-    "USD": Decimal("10"),
-    "GBP": Decimal("10"),
+    "EUR": Decimal("11"),
+    "USD": Decimal("11"),
+    "GBP": Decimal("11"),
 }
-_DEFAULT_MIN_DAILY_BUDGET = Decimal("10")
+_DEFAULT_MIN_DAILY_BUDGET = Decimal("11")
 
 # LinkedIn's privacy floor: an audience under this size cannot run.
 AUDIENCE_MIN_SIZE = 300
+
+
+def _money(amount: Decimal | str, currency: str) -> dict[str, str]:
+    return {"amount": str(amount), "currency": currency.upper()}
+
+
+def fallback_floor(currency: str | None) -> dict[str, Any]:
+    """Conservative, currency-only floor used when the live quote is unavailable."""
+    key = (currency or "").upper()
+    return {
+        "min_daily": _money(
+            _MIN_DAILY_BUDGET.get(key, _DEFAULT_MIN_DAILY_BUDGET), key or "EUR"
+        ),
+        "min_total": _money(
+            _MIN_GROUP_BUDGET.get(key, _DEFAULT_MIN_GROUP_BUDGET), key or "EUR"
+        ),
+        "source": "fallback",
+        "notes": "Currency-only fallback; the live floor depends on objective and audience.",
+    }
+
+
+def _pick_amount(*candidates: Any) -> Decimal | None:
+    """First non-None candidate that parses as a Decimal."""
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        try:
+            return Decimal(str(candidate))
+        except (ValueError, ArithmeticError):
+            continue
+    return None
+
+
+def _box_min(box: Any, *, fallback: Any) -> tuple[Decimal | None, str | None]:
+    """Pull (amount, currencyCode) from one limits box across known shapes.
+
+    A limits box may be `{min: {amount, currencyCode}}`, `{minimum: {...}}`, or a
+    flat `{amount, currencyCode}`. Returns (None, None) for anything else, with
+    `fallback` (a sibling flat amount) used when the box has no usable number.
+    """
+    if not isinstance(box, dict):
+        return _pick_amount(fallback), None
+    inner = box.get("min") if isinstance(box.get("min"), dict) else box.get("minimum")
+    inner = inner if isinstance(inner, dict) else {}
+    amount = _pick_amount(inner.get("amount"), box.get("amount"), fallback)
+    currency = inner.get("currencyCode") or box.get("currencyCode")
+    return amount, currency
+
+
+def _parse_pricing(payload: dict[str, Any], currency: str | None) -> dict[str, Any] | None:
+    """Reduce an adBudgetPricing response to `{min_daily, min_total}`.
+
+    LinkedIn's response shape has shifted across API versions: the floor may live
+    on top-level `dailyBudgetLimits`/`lifetimeBudgetLimits`, on the first
+    `elements` entry, or under `suggestedDailyBudget.min`. We look in the common
+    spots and bail out (returning None) if we can't pull a number — the caller
+    then falls back to the conservative table rather than guessing.
+    """
+    root = payload or {}
+    elements = root.get("elements") or []
+    candidates = [elements[0]] if elements else []
+    candidates.append(root)
+
+    daily: Decimal | None = None
+    total: Decimal | None = None
+    out_currency = (currency or "").upper()
+
+    for src in candidates:
+        if not isinstance(src, dict):
+            continue
+        daily_amount, daily_cur = _box_min(
+            src.get("dailyBudgetLimits") or src.get("suggestedDailyBudget"),
+            fallback=src.get("minDailyBudgetAmount"),
+        )
+        total_amount, total_cur = _box_min(
+            src.get("lifetimeBudgetLimits") or src.get("suggestedLifetimeBudget"),
+            fallback=src.get("minLifetimeBudgetAmount"),
+        )
+        daily = daily or daily_amount
+        total = total or total_amount
+        if daily_cur or total_cur:
+            out_currency = str(daily_cur or total_cur).upper()
+
+    if daily is None and total is None:
+        return None
+
+    result: dict[str, Any] = {"source": "live"}
+    if daily is not None:
+        result["min_daily"] = _money(daily, out_currency or "EUR")
+    if total is not None:
+        result["min_total"] = _money(total, out_currency or "EUR")
+    return result
+
+
+def _bid_type_for(strategy: BiddingStrategy | None) -> str | None:
+    if strategy is BiddingStrategy.manual:
+        return "CPC_BID"
+    return None  # let LinkedIn default for auto/cost_cap
+
+
+async def quote_budget_floor(
+    client: LinkedInClient,
+    *,
+    objective: str | None,
+    currency: str | None,
+    targeting_criteria: dict[str, Any] | None = None,
+    bidding_strategy: BiddingStrategy | None = None,
+) -> dict[str, Any]:
+    """Ask LinkedIn for the live per-plan floor; fall back to the table on trouble.
+
+    Always returns a neutral `{min_daily, min_total, source, notes?}` so callers
+    do not have to handle exceptions. `source` is "live" when the number came
+    from `adBudgetPricing`, "fallback" otherwise (missing config, API error,
+    response shape we cannot parse). A fallback is safe to use for messaging but
+    the platform will still quote its own number at publish-time.
+    """
+    try:
+        platform_objective = (
+            OBJECTIVE_TO_LINKEDIN[Objective(objective)] if objective else None
+        )
+    except (KeyError, ValueError):
+        platform_objective = None
+
+    if not platform_objective:
+        return fallback_floor(currency)
+
+    optimization_target = campaign_optimization_target(platform_objective)
+    cost_type = AUTO_BID_COST_TYPE if optimization_target else None
+
+    try:
+        payload = await client.ad_budget_pricing(
+            campaign_type=DEFAULT_CAMPAIGN_TYPE,
+            objective_type=platform_objective,
+            targeting_criteria=targeting_criteria,
+            optimization_target=optimization_target,
+            bid_type=_bid_type_for(bidding_strategy) or cost_type,
+        )
+    except Exception:  # noqa: BLE001 — any failure: fall back, never raise to caller
+        return fallback_floor(currency)
+
+    parsed = _parse_pricing(payload, currency)
+    if parsed is None:
+        return fallback_floor(currency)
+    # When the parse succeeds we trust the live quote in full — that is the
+    # whole point of asking. The table is fallback only.
+    return parsed
 
 
 # Optional campaign fields the operator may set or delegate. `status` tells the
@@ -230,6 +388,36 @@ def _group_budget(campaign: Any) -> tuple[Decimal, str] | None:
     return None
 
 
+async def _line_item_floor(
+    client: LinkedInClient, campaign: Any, line_item: Any
+) -> dict[str, Any]:
+    """Quote the live per-plan floor for one line item, resolving its audience.
+
+    Best-effort: any failure (audience resolution, API) returns the table-based
+    fallback rather than blocking pre-flight.
+    """
+    # Lazy import to avoid a cycle (targeting imports from this package's siblings).
+    from .targeting import TargetingResolver
+
+    criteria: dict[str, Any] | None = None
+    try:
+        resolved = await TargetingResolver(client).resolve(line_item.targeting.audience)
+        criteria = resolved.criteria
+    except Exception:  # noqa: BLE001 — quote without targeting is still useful
+        criteria = None
+
+    objective = (
+        campaign.objective.value if hasattr(campaign.objective, "value") else campaign.objective
+    )
+    return await quote_budget_floor(
+        client,
+        objective=objective,
+        currency=line_item.budget.currency,
+        targeting_criteria=criteria,
+        bidding_strategy=line_item.bidding_strategy,
+    )
+
+
 async def preflight_problems(
     client: LinkedInClient, campaign: Any, *, today: date | None = None
 ) -> list[Problem]:
@@ -266,19 +454,44 @@ async def preflight_problems(
                 )
             )
 
-        # An explicit daily budget must clear the per-day minimum.
+        # Quote LinkedIn's live per-plan daily floor (or fall back to the table) for
+        # this line item's (objective, audience, bidding) tuple, and check both the
+        # explicit daily and — when the operator only gave a total — the derived
+        # daily = total / flight_days. This catches the "210 EUR over 21 days →
+        # 10.00/day, LinkedIn wants 10.40/day" rejection class before publish.
+        floor = await _line_item_floor(client, campaign, li)
+        min_daily_amount = Decimal(floor["min_daily"]["amount"])
+        floor_cur = floor["min_daily"]["currency"]
+
         if li.daily_budget is not None:
             cur = li.daily_budget.currency.upper()
-            min_daily = _MIN_DAILY_BUDGET.get(cur, _DEFAULT_MIN_DAILY_BUDGET)
-            if Decimal(li.daily_budget.amount) < min_daily:
+            if Decimal(li.daily_budget.amount) < min_daily_amount:
                 problems.append(
                     _problem(
                         f"line_items[{li.name}].daily_budget",
                         f"Daily budget {li.daily_budget.amount} {cur} is below the "
-                        f"minimum {min_daily} {cur}.",
-                        f"Raise the daily budget to at least {min_daily} {cur}.",
+                        f"{floor['source']} minimum {min_daily_amount} {floor_cur}.",
+                        f"Raise the daily budget to at least {min_daily_amount} {floor_cur}.",
                     )
                 )
+        else:
+            flight_days = (li.flight.end_date - li.flight.start_date).days + 1
+            if flight_days > 0:
+                derived_daily = Decimal(li.budget.amount) / Decimal(flight_days)
+                if derived_daily < min_daily_amount:
+                    needed_total = (min_daily_amount * flight_days).quantize(Decimal("0.01"))
+                    problems.append(
+                        _problem(
+                            f"line_items[{li.name}].budget",
+                            f"Total {li.budget.amount} {li.budget.currency} over "
+                            f"{flight_days} days is {derived_daily.quantize(Decimal('0.01'))} "
+                            f"{li.budget.currency}/day, below the {floor['source']} minimum "
+                            f"{min_daily_amount} {floor_cur}/day.",
+                            f"Raise the total to at least {needed_total} {floor_cur}, "
+                            f"shorten the flight, or set daily_budget at or above "
+                            f"{min_daily_amount} {floor_cur}.",
+                        )
+                    )
 
     # All line items must share a currency — otherwise the group budget (summed in
     # the first line item's currency) silently drops the others.
