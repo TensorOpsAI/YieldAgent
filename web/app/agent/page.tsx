@@ -73,10 +73,6 @@ export default function AgentConsole() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const availableModels = providers
-    .filter((p) => p.connected)
-    .flatMap((p) => p.models);
-
   useEffect(() => {
     fetchProviders()
       .then((ps) => {
@@ -399,7 +395,7 @@ export default function AgentConsole() {
       {/* Composer */}
       <div className="border-t border-line px-6 py-4">
         <div className="mx-auto flex max-w-3xl items-center gap-2">
-          <ModelPicker models={availableModels} value={model} onChange={chooseModel} />
+          <ModelPicker providers={providers} value={model} onChange={chooseModel} />
           <div className="flex flex-1 items-end gap-2 rounded-xl border border-line bg-surface px-2 py-1.5 focus-within:border-brand">
             <textarea
               ref={inputRef}
