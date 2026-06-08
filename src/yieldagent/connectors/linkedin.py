@@ -120,15 +120,17 @@ class LinkedInConnector:
     async def quote_budget_floor(self, plan: dict[str, Any]) -> dict[str, Any]:
         """Live per-plan floor via `adBudgetPricing`; falls back to the table.
 
-        `plan` may carry `objective`, `currency`, `audience`, `bidding_strategy`.
-        Missing fields are tolerated — without an objective we can only return
-        the conservative fallback. Audience is resolved to LinkedIn targeting
-        criteria when present, so the quote reflects the actual targeting.
+        `plan` carries `objective`, `currency`, `audience`, `bidding_strategy`. The
+        audience is the important one: `adBudgetPricing` 400s without resolved
+        targeting, so a quote without it can only be the conservative fallback. We
+        resolve the audience from `plan["audience"]` and, failing that, from a
+        nested line item, so a live quote fires whenever the plan describes one.
         """
-        objective = (plan or {}).get("objective")
-        currency = (plan or {}).get("currency")
-        audience = (plan or {}).get("audience")
-        strategy_raw = (plan or {}).get("bidding_strategy")
+        plan = plan or {}
+        objective = plan.get("objective")
+        currency = plan.get("currency")
+        audience = _audience_from_plan(plan)
+        strategy_raw = plan.get("bidding_strategy")
         try:
             strategy = BiddingStrategy(strategy_raw) if strategy_raw else None
         except ValueError:
@@ -145,7 +147,7 @@ class LinkedInConnector:
                         parsed_audience = Audience.model_validate(audience)
                         resolved = await TargetingResolver(client).resolve(parsed_audience)
                         criteria = resolved.criteria
-                    except Exception:  # noqa: BLE001 — audience is optional for the quote
+                    except Exception:  # noqa: BLE001 — fall back if targeting won't resolve
                         criteria = None
                 return await quote_budget_floor(
                     client,
@@ -275,6 +277,24 @@ class LinkedInConnector:
             ) from exc
         result["manage_url"] = _lcm_url(LinkedInConfig.from_env().ad_account_id)
         return result
+
+
+def _audience_from_plan(plan: dict[str, Any]) -> dict[str, Any] | None:
+    """Find an audience in a quote plan, however the agent shaped it.
+
+    Prefers a top-level `audience`, then the first line item's targeting under
+    either a flat `line_items` list or a nested `campaign`. Returns None if none
+    is present (the quote then falls back to the conservative table)."""
+    if isinstance(plan.get("audience"), dict):
+        return plan["audience"]
+    campaign = plan.get("campaign") if isinstance(plan.get("campaign"), dict) else plan
+    line_items = campaign.get("line_items") if isinstance(campaign, dict) else None
+    if isinstance(line_items, list) and line_items:
+        targeting = line_items[0].get("targeting") if isinstance(line_items[0], dict) else None
+        audience = targeting.get("audience") if isinstance(targeting, dict) else None
+        if isinstance(audience, dict):
+            return audience
+    return None
 
 
 async def _preview_existing_post(client: Any, post_urn: str) -> dict[str, Any]:

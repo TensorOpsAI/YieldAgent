@@ -21,7 +21,7 @@ fixable issues uniformly (and never see a raw traceback).
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 from typing import Any, TypedDict
 
 from yieldagent.domain import BiddingStrategy, Objective
@@ -85,9 +85,23 @@ _DEFAULT_MIN_DAILY_BUDGET = Decimal("11")
 # LinkedIn's privacy floor: an audience under this size cannot run.
 AUDIENCE_MIN_SIZE = 300
 
+# Headroom applied to a *live* adBudgetPricing floor before we treat it as the
+# gate. Two reasons: (1) adBudgetPricing returns a normalized (USD) figure even
+# for a EUR/GBP account, so the raw number can sit just under the account-currency
+# enforcement — a 10 USD quote vs a 10.40 EUR rejection; (2) a touch of headroom
+# keeps a derived daily from landing exactly on the floor. The buffered value is
+# expressed in the plan's currency (the small FX/normalization gap is absorbed by
+# the buffer), and we keep the raw quote in `quoted_daily` for transparency.
+_FLOOR_SAFETY_MULTIPLIER = Decimal("1.10")
+
 
 def _money(amount: Decimal | str, currency: str) -> dict[str, str]:
     return {"amount": str(amount), "currency": currency.upper()}
+
+
+def _buffer_up(amount: Decimal) -> Decimal:
+    """Apply the safety multiplier and round up to whole cents."""
+    return (amount * _FLOOR_SAFETY_MULTIPLIER).quantize(Decimal("0.01"), rounding=ROUND_CEILING)
 
 
 def fallback_floor(currency: str | None) -> dict[str, Any]:
@@ -179,9 +193,31 @@ def _parse_pricing(payload: dict[str, Any], currency: str | None) -> dict[str, A
 
 
 def _bid_type_for(strategy: BiddingStrategy | None) -> str | None:
+    """The `bidType` adBudgetPricing wants. Auto/cost_cap fall through to the
+    objective's cost type (CPM); manual bidding is CPC."""
     if strategy is BiddingStrategy.manual:
-        return "CPC_BID"
-    return None  # let LinkedIn default for auto/cost_cap
+        return "CPC"
+    return None
+
+
+def _apply_buffer(parsed: dict[str, Any], plan_currency: str | None) -> dict[str, Any]:
+    """Turn a raw live quote into a gate value: buffer it and label it in the
+    plan's currency, keeping the raw quote in `quoted_daily`/`quoted_total`."""
+    plan_cur = (plan_currency or parsed.get("min_daily", {}).get("currency") or "EUR").upper()
+    out: dict[str, Any] = {
+        "source": "live",
+        "notes": (
+            "LinkedIn's live floor for this objective and audience, with ~10% "
+            "safety headroom so the budget clears the account-currency minimum."
+        ),
+    }
+    for key in ("min_daily", "min_total"):
+        raw = parsed.get(key)
+        if not raw:
+            continue
+        out[key] = _money(_buffer_up(Decimal(raw["amount"])), plan_cur)
+        out[f"quoted_{key.split('_')[1]}"] = raw  # quoted_daily / quoted_total (raw, real currency)
+    return out
 
 
 async def quote_budget_floor(
@@ -195,10 +231,14 @@ async def quote_budget_floor(
     """Ask LinkedIn for the live per-plan floor; fall back to the table on trouble.
 
     Always returns a neutral `{min_daily, min_total, source, notes?}` so callers
-    do not have to handle exceptions. `source` is "live" when the number came
-    from `adBudgetPricing`, "fallback" otherwise (missing config, API error,
-    response shape we cannot parse). A fallback is safe to use for messaging but
-    the platform will still quote its own number at publish-time.
+    do not have to handle exceptions. On a successful `adBudgetPricing` call the
+    floor is `source: "live"`, buffered for safety (see `_FLOOR_SAFETY_MULTIPLIER`)
+    and expressed in the plan currency, with the untouched quote in `quoted_daily`.
+    `source` is "fallback" when the live quote is unavailable — missing objective,
+    no targeting (the endpoint requires it), API error, or an unparseable shape.
+
+    `targeting_criteria` is REQUIRED for a live quote: adBudgetPricing 400s without
+    it, so a None here goes straight to the conservative fallback.
     """
     try:
         platform_objective = (
@@ -207,11 +247,16 @@ async def quote_budget_floor(
     except (KeyError, ValueError):
         platform_objective = None
 
-    if not platform_objective:
+    # Without an objective or resolved targeting the endpoint cannot answer; do not
+    # waste a guaranteed-400 round trip — return the conservative floor.
+    if not platform_objective or not targeting_criteria:
         return fallback_floor(currency)
 
     optimization_target = campaign_optimization_target(platform_objective)
     cost_type = AUTO_BID_COST_TYPE if optimization_target else None
+    bid_type = _bid_type_for(bidding_strategy) or cost_type
+    if not bid_type:
+        return fallback_floor(currency)  # nothing valid to send as bidType
 
     try:
         payload = await client.ad_budget_pricing(
@@ -219,7 +264,7 @@ async def quote_budget_floor(
             objective_type=platform_objective,
             targeting_criteria=targeting_criteria,
             optimization_target=optimization_target,
-            bid_type=_bid_type_for(bidding_strategy) or cost_type,
+            bid_type=bid_type,
         )
     except Exception:  # noqa: BLE001 — any failure: fall back, never raise to caller
         return fallback_floor(currency)
@@ -227,9 +272,7 @@ async def quote_budget_floor(
     parsed = _parse_pricing(payload, currency)
     if parsed is None:
         return fallback_floor(currency)
-    # When the parse succeeds we trust the live quote in full — that is the
-    # whole point of asking. The table is fallback only.
-    return parsed
+    return _apply_buffer(parsed, currency)
 
 
 # Optional campaign fields the operator may set or delegate. `status` tells the

@@ -123,13 +123,15 @@ async def quote_budget_floor(platform: str, plan: dict[str, Any]) -> dict[str, A
     floor depends on (account, objective, audience, bidding) and a number that
     looked right last week may not today.
 
-    `plan` carries what you already know: {objective, currency, audience?,
-    bidding_strategy?}. Returns {min_daily{amount,currency}, min_total{amount,
-    currency}, source: "live"|"fallback", notes?}. When the total budget is given
-    without a daily, the platform derives daily = total / flight_days — that
-    derived daily must clear min_daily, so a short flight needs a proportionally
-    larger total. If `source` is "fallback", the live quote was unavailable; treat
-    the numbers as advisory and warn the operator the platform may still reject.
+    `plan` MUST include the resolved `audience` — the platform cannot quote a real
+    floor without targeting and will fall back otherwise. Pass {objective, currency,
+    audience, bidding_strategy?}. Returns {min_daily{amount,currency}, min_total?,
+    source: "live"|"fallback", quoted_daily?, notes?}. `min_daily` already includes
+    a small safety margin and is in your plan's currency; `quoted_daily` is the raw
+    platform number. When a total budget is given without a daily, the platform
+    derives daily = total / flight_days, which must clear min_daily — so a short
+    flight needs a proportionally larger total. If `source` is "fallback", the live
+    quote was unavailable (usually a missing audience): say the figure is approximate.
     """
     return await get_connector(platform).quote_budget_floor(plan)
 
