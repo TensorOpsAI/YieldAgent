@@ -49,7 +49,7 @@ export default function Dashboard() {
   }
 
   const stats = [
-    { label: "Tracked spend", value: "—", hint: "n/a for drafts" },
+    { label: "Tracked spend", value: "N/A", hint: "n/a for drafts" },
     { label: "Draft campaigns", value: String(summary?.drafts ?? 0) },
     { label: "Pending approvals", value: "0" },
     { label: "Campaigns created", value: String(summary?.campaigns ?? 0) },
@@ -87,8 +87,8 @@ export default function Dashboard() {
           />
           <span className="eyebrow">Agent command center</span>
           <h2 className="mt-2 max-w-lg font-display text-2xl leading-snug text-ink">
-            Describe a campaign in plain language — the agent plans, targets, and
-            drafts it on LinkedIn.
+            Describe a campaign in plain language. The agent plans, targets, and
+            drafts it for review.
           </h2>
           <Link
             href="/agent"
