@@ -54,8 +54,10 @@ def test_ad_referencing_unknown_line_item_is_flagged() -> None:
 
 def test_creative_without_source_is_flagged() -> None:
     data = _complete()
-    data["ads"][0]["creative"] = {"name": "c1"}  # no post urn, no landing url
-    assert any("creative source" in i for i in campaign_issues(data))
+    data["ads"][0]["creative"] = {"name": "c1"}  # no post urn, no copy
+    # A creative needs either an existing post URN to sponsor or ad copy; a
+    # landing URL is optional, so its absence alone must not block.
+    assert any("needs a creative" in i for i in campaign_issues(data))
 
 
 def test_invalid_budget_is_flagged() -> None:

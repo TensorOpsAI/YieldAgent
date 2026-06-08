@@ -14,6 +14,7 @@ import {
 import { fetchProviders, type Provider } from "@/lib/api";
 import { ProposalCard } from "@/components/ProposalCard";
 import { ModelPicker } from "@/components/ModelPicker";
+import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 
 type Item =
   | { kind: "user"; text: string }
@@ -65,9 +66,10 @@ export default function AgentConsole() {
   const [busy, setBusy] = useState(false);
   const [awaiting, setAwaiting] = useState(false);
   const [providers, setProviders] = useState<Provider[]>([]);
-  const [model, setModel] = useState("");
+  const [model, setModel] = useState("gemini-3.5-flash");
   const threadId = useRef<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const availableModels = providers
     .filter((p) => p.connected)
@@ -77,13 +79,34 @@ export default function AgentConsole() {
     fetchProviders()
       .then((ps) => {
         setProviders(ps);
-        // Default to a sensible model: prefer a fast Gemini, else the first available.
+        // Always default to Gemini flash; otherwise the last-used model, else first.
         const available = ps.filter((p) => p.connected).flatMap((p) => p.models);
-        const preferred = available.find((m) => m === "gemini-3.5-flash") ?? available[0];
-        if (preferred) setModel((m) => m || preferred);
+        const saved =
+          typeof window !== "undefined" ? window.localStorage.getItem("ya_model") : null;
+        const preferred =
+          available.find((m) => m === "gemini-3.5-flash") ??
+          (saved && available.includes(saved) ? saved : undefined) ??
+          available[0];
+        if (preferred) setModel(preferred);
       })
       .catch(() => undefined);
   }, []);
+
+  // Keep the composer focused so the operator can always just type (no re-click).
+  useEffect(() => {
+    if (!busy && model) inputRef.current?.focus();
+  }, [busy, model]);
+
+  // Auto-scroll to the newest message / tool step whenever the thread grows.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight });
+  }, [items]);
+
+  const chooseModel = (m: string) => {
+    setModel(m);
+    if (typeof window !== "undefined") window.localStorage.setItem("ya_model", m);
+  };
 
   const push = (item: Item) => setItems((prev) => [...prev, item]);
   const scroll = () =>
@@ -351,15 +374,25 @@ export default function AgentConsole() {
               </div>
             );
           })}
+
+          {busy &&
+            (() => {
+              const last = items[items.length - 1];
+              const toolInFlight = last?.kind === "tool" && last.summary === null;
+              // A tool already shows its own spinner; otherwise show the rotating
+              // "Thinking…" so slow models never look frozen between tool calls.
+              return toolInFlight ? null : <ThinkingIndicator />;
+            })()}
         </div>
       </div>
 
       {/* Composer */}
       <div className="border-t border-line px-6 py-4">
         <div className="mx-auto flex max-w-3xl items-center gap-2">
-          <ModelPicker models={availableModels} value={model} onChange={setModel} />
+          <ModelPicker models={availableModels} value={model} onChange={chooseModel} />
           <div className="flex flex-1 items-center gap-2 rounded-xl border border-line bg-surface px-2 py-1.5 focus-within:border-brand">
             <input
+              ref={inputRef}
               value={input}
               aria-label="Describe your campaign"
               onChange={(e) => setInput(e.target.value)}

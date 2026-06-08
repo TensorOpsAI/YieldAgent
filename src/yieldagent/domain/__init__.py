@@ -9,11 +9,19 @@ an "Ad Set", Google calls it an "Ad Group", etc.).
 """
 
 from .brief import KPI, Audience, Brief, CreativeAsset, Flight, Money, Objective
-from .campaign import Ad, Campaign, CampaignStatus, LineItem, Targeting
+from .campaign import (
+    Ad,
+    BiddingStrategy,
+    Campaign,
+    CampaignStatus,
+    LineItem,
+    Targeting,
+)
 
 __all__ = [
     "Ad",
     "Audience",
+    "BiddingStrategy",
     "Brief",
     "Campaign",
     "CampaignStatus",

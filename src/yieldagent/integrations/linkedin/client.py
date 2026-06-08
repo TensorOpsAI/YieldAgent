@@ -184,10 +184,13 @@ class LinkedInClient(BaseHttpClient):
         optimization_target_type: str | None = None,
         status: str | None = None,
         offsite_delivery_enabled: bool = False,
+        audience_expansion_enabled: bool | None = None,
         political_intent: str = "NOT_POLITICAL",
     ) -> dict[str, Any]:
-        if (daily_budget is None) == (total_budget is None):
-            raise ValueError("Provide exactly one of daily_budget or total_budget")
+        # LinkedIn allows a daily budget, a total/lifetime budget, or both — but at
+        # least one is required.
+        if daily_budget is None and total_budget is None:
+            raise ValueError("Provide at least one of daily_budget or total_budget")
         if political_intent not in _POLITICAL_INTENT_VALUES:
             raise ValueError(
                 f"political_intent must be one of {sorted(_POLITICAL_INTENT_VALUES)}, "
@@ -219,6 +222,8 @@ class LinkedInClient(BaseHttpClient):
         # (Maximum delivery) and no manual unitCost is required.
         if optimization_target_type is not None:
             payload["optimizationTargetType"] = optimization_target_type
+        if audience_expansion_enabled is not None:
+            payload["audienceExpansionEnabled"] = audience_expansion_enabled
         return await self._request(
             "POST",
             f"/adAccounts/{self.config.ad_account_id}/adCampaigns",

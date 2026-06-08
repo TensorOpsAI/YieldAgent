@@ -18,13 +18,17 @@ from mcp.server.fastmcp import FastMCP
 from yieldagent.domain import Campaign
 from yieldagent.env import load_dotenv
 
-from .client import LinkedInClient
+from .client import LinkedInClient, LinkedInError
 from .config import LinkedInConfig
+from .diagnostics import (
+    CampaignValidationError,
+    explain_linkedin_error,
+    preflight_problems,
+)
 from .mapping import (
-    AUTO_BID_COST_TYPE,
     DEFAULT_CAMPAIGN_TYPE,
+    campaign_bidding,
     campaign_objective,
-    campaign_optimization_target,
     campaign_run_schedule,
     creative_content_reference,
     flight_to_run_schedule,
@@ -154,25 +158,33 @@ async def _create_line_items(
     line_item_urns: dict[str, str] = {}
     unresolved_by_li: dict[str, dict[str, Any]] = {}
     results: list[dict[str, Any]] = []
-    # Auto-bidding (Maximum delivery): CPM + the objective's optimization target,
-    # so LinkedIn sets the bid and the draft is activation-ready without a price.
-    optimization_target = campaign_optimization_target(objective_type)
-    cost_type = AUTO_BID_COST_TYPE if optimization_target else "CPC"
     for li in parsed.line_items:
         resolved = await resolver.resolve(li.targeting.audience)
         if resolved.unresolved:
             unresolved_by_li[li.name] = resolved.unresolved
+        # Bidding from the line item's choice (defaults to auto Maximum delivery),
+        # plus optional daily cap and audience-expansion / Audience Network toggles.
+        bidding = campaign_bidding(li, objective_type)
+        daily_budget = (
+            money_to_linkedin_amount(li.daily_budget.amount, li.daily_budget.currency)
+            if li.daily_budget
+            else None
+        )
         created_li = await client.create_campaign(
             campaign_group_urn=group_urn,
             name=li.name,
             objective_type=objective_type,
             campaign_type=DEFAULT_CAMPAIGN_TYPE,
             total_budget=money_to_linkedin_amount(li.budget.amount, li.budget.currency),
+            daily_budget=daily_budget,
             run_schedule=flight_to_run_schedule(li.flight),
             targeting_criteria=resolved.criteria,
             locale=line_item_locale(li.targeting.audience),
-            cost_type=cost_type,
-            optimization_target_type=optimization_target,
+            cost_type=bidding["cost_type"],
+            optimization_target_type=bidding["optimization_target_type"],
+            unit_cost=bidding["unit_cost"],
+            offsite_delivery_enabled=bool(li.audience_network),
+            audience_expansion_enabled=li.audience_expansion,
         )
         created.campaigns.append(created_li["id"])
         urn = f"urn:li:sponsoredCampaign:{created_li['id']}"
@@ -207,7 +219,11 @@ async def _create_ads(
             post = await client.create_post(
                 author_urn=org_urn,
                 commentary=post_commentary(ad.creative),
-                article=post_article_content(ad.creative),
+                # Only attach an article block when there's a real link; otherwise
+                # mint a text-only post so we never ask for / fabricate a URL.
+                article=(
+                    post_article_content(ad.creative) if ad.creative.landing_url else None
+                ),
                 dsc_ad_account_urn=config.account_urn,
             )
             post_urn = post.get("id")
@@ -252,6 +268,22 @@ async def _rollback_and_raise(
             " WARNING: some resources could not be deleted and need manual "
             f"cleanup in Campaign Manager: {cleanup_warnings}"
         )
+    # Layer 2 — translate a LinkedIn rejection into clean, fixable problems so the
+    # agent can tell the user what to change; non-API failures stay opaque errors.
+    if isinstance(exc, LinkedInError):
+        problems = explain_linkedin_error(exc)
+        if cleanup_warnings:
+            problems.append(
+                {
+                    "field": "campaign",
+                    "message": (
+                        "Some partial resources could not be auto-deleted: "
+                        f"{cleanup_warnings}"
+                    ),
+                    "fix": "Remove them manually in Campaign Manager.",
+                }
+            )
+        raise CampaignValidationError(problems, rolled_back=rolled_back) from exc
     raise RuntimeError(detail) from exc
 
 
@@ -276,6 +308,13 @@ async def publish_draft_campaign(campaign: dict[str, Any]) -> dict[str, Any]:
 
     async with LinkedInClient(config) as client:
         client.assert_account_allowed()
+
+        # Layer 1 — predict the predictable: reject currency/budget/date problems
+        # before creating anything, so we never create+rollback for a known rule.
+        problems = await preflight_problems(client, parsed)
+        if problems:
+            raise CampaignValidationError(problems)
+
         amount, currency = _group_budget(parsed)
 
         # Track every resource we create so we can tear it down if a later step

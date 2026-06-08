@@ -14,11 +14,19 @@ export type Audience = {
   skills?: string[];
   company_sizes?: string[];
 };
+export type BiddingStrategy = "maximum_delivery" | "cost_cap" | "manual";
 export type LineItem = {
   name?: string;
   budget?: Money;
   flight?: Flight;
   targeting?: { audience?: Audience };
+  // Optional delivery controls; absent means the platform's auto default.
+  daily_budget?: Money | null;
+  bidding_strategy?: BiddingStrategy | null;
+  bid_amount?: Money | null;
+  optimization_goal?: string | null;
+  audience_expansion?: boolean | null;
+  audience_network?: boolean | null;
 };
 export type Creative = {
   name?: string;

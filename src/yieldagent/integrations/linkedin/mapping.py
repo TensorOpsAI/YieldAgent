@@ -20,9 +20,15 @@ from __future__ import annotations
 from datetime import UTC, datetime, time
 from typing import Any
 
-import pycountry
-
-from yieldagent.domain import Audience, Campaign, CreativeAsset, Flight, Objective
+from yieldagent.domain import (
+    Audience,
+    BiddingStrategy,
+    Campaign,
+    CreativeAsset,
+    Flight,
+    LineItem,
+    Objective,
+)
 
 # LinkedIn objectiveType values for Sponsored Content campaigns.
 OBJECTIVE_TO_LINKEDIN: dict[Objective, str] = {
@@ -67,6 +73,42 @@ def campaign_optimization_target(objective_type: str) -> str | None:
     return OBJECTIVE_TO_OPTIMIZATION_TARGET.get(objective_type)
 
 
+def campaign_bidding(line_item: LineItem, objective_type: str) -> dict[str, Any]:
+    """Translate a line item's bidding choice into create_campaign kwargs.
+
+    Returns `cost_type`, `optimization_target_type`, and `unit_cost`:
+      * maximum_delivery (default) — CPM + the objective's optimization target,
+        no manual price (LinkedIn bids automatically).
+      * cost_cap — same auto target, but `unit_cost` carries the target cost cap.
+      * manual — CPC with `unit_cost` as the bid, and no optimization target.
+
+    An operator-supplied `optimization_goal` overrides the objective-derived one.
+    `bid_amount` is required for cost_cap/manual (enforced in pre-flight); if it is
+    somehow absent, `unit_cost` is None and LinkedIn's API is the backstop.
+    """
+    strategy = line_item.bidding_strategy or BiddingStrategy.maximum_delivery
+    target = line_item.optimization_goal or campaign_optimization_target(objective_type)
+    bid = line_item.bid_amount
+    unit_cost = money_to_linkedin_amount(bid.amount, bid.currency) if bid else None
+
+    if strategy is BiddingStrategy.manual:
+        return {"cost_type": "CPC", "optimization_target_type": None, "unit_cost": unit_cost}
+    if strategy is BiddingStrategy.cost_cap:
+        return {
+            "cost_type": AUTO_BID_COST_TYPE,
+            "optimization_target_type": target,
+            "unit_cost": unit_cost,
+        }
+    # maximum_delivery: auto-bid when we have a target, else fall back to manual CPC.
+    if target:
+        return {
+            "cost_type": AUTO_BID_COST_TYPE,
+            "optimization_target_type": target,
+            "unit_cost": None,
+        }
+    return {"cost_type": "CPC", "optimization_target_type": None, "unit_cost": unit_cost}
+
+
 def money_to_linkedin_amount(amount: Any, currency: str) -> dict[str, str]:
     """LinkedIn expects amounts as decimal strings, not minor units."""
     return {"amount": str(amount), "currencyCode": currency.upper()}
@@ -92,16 +134,51 @@ def campaign_run_schedule(flights: list[Flight]) -> dict[str, int]:
     return flight_to_run_schedule(Flight(start_date=earliest, end_date=latest))
 
 
-def line_item_locale(audience: Audience) -> dict[str, str]:
-    """LinkedIn campaigns require a `locale` (country + language).
+# LinkedIn campaign `locale` must be a SUPPORTED member-UI interface locale, not
+# any country+language combo. e.g. `en_PT` is rejected (INVALID_INTERFACE_LOCALE_CODE)
+# and Portuguese only exists as `pt_BR`. This maps each country with a known-good
+# locale to its (country, language); everything else falls back to en_US.
+# Source: LinkedIn reference-tables/language-codes (interface locales).
+SUPPORTED_LOCALE_BY_COUNTRY: dict[str, tuple[str, str]] = {
+    "AE": ("AE", "ar"),
+    "BR": ("BR", "pt"),
+    "CN": ("CN", "zh"),
+    "CZ": ("CZ", "cs"),
+    "DE": ("DE", "de"),
+    "DK": ("DK", "da"),
+    "ES": ("ES", "es"),
+    "FR": ("FR", "fr"),
+    "GB": ("GB", "en"),
+    "ID": ("ID", "in"),
+    "IT": ("IT", "it"),
+    "JP": ("JP", "ja"),
+    "KR": ("KR", "ko"),
+    "MY": ("MY", "ms"),
+    "NL": ("NL", "nl"),
+    "NO": ("NO", "no"),
+    "PH": ("PH", "tl"),
+    "PL": ("PL", "pl"),
+    "RO": ("RO", "ro"),
+    "RU": ("RU", "ru"),
+    "SE": ("SE", "sv"),
+    "TH": ("TH", "th"),
+    "TR": ("TR", "tr"),
+    "TW": ("TW", "zh"),
+    "UA": ("UA", "uk"),
+    "US": ("US", "en"),
+}
 
-    Derived from the first audience geo if it is a valid ISO 3166-1 alpha-2
-    code; defaults to en/US otherwise.
+
+def line_item_locale(audience: Audience) -> dict[str, str]:
+    """LinkedIn campaigns require a `locale` that is a SUPPORTED interface locale.
+
+    Not every country+language combination is valid (e.g. `en_PT` is rejected),
+    so we look the first audience geo up in the supported-locale table and fall
+    back to en_US for anything LinkedIn does not support as a UI locale.
     """
     country = audience.geos[0].strip().upper() if audience.geos else "US"
-    if pycountry.countries.get(alpha_2=country) is None:
-        country = "US"
-    return {"country": country, "language": "en"}
+    locale = SUPPORTED_LOCALE_BY_COUNTRY.get(country, ("US", "en"))
+    return {"country": locale[0], "language": locale[1]}
 
 
 def post_article_content(creative: CreativeAsset) -> dict[str, Any]:
@@ -140,6 +217,7 @@ __all__ = [
     "DEFAULT_CAMPAIGN_TYPE",
     "OBJECTIVE_TO_LINKEDIN",
     "OBJECTIVE_TO_OPTIMIZATION_TARGET",
+    "campaign_bidding",
     "campaign_objective",
     "campaign_optimization_target",
     "campaign_run_schedule",
