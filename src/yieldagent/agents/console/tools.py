@@ -136,6 +136,7 @@ async def propose_campaign(platform: str, campaign: dict[str, Any]) -> str:
     connector = get_connector(platform)
     plan = await connector.preview_plan(campaign)
     previews = await connector.preview_ads(campaign)
+    forecast = await connector.forecast(campaign)
     decision = interrupt(
         {
             "type": "proposal",
@@ -144,6 +145,7 @@ async def propose_campaign(platform: str, campaign: dict[str, Any]) -> str:
             "unresolved": plan.get("unresolved", {}),
             "previews": previews,
             "reach": plan.get("reach", {}),
+            "forecast": forecast,
         }
     )
     if decision.get("approved"):

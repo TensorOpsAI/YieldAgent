@@ -18,6 +18,13 @@ from yieldagent.integrations.linkedin.diagnostics import (
     describe_constraints,
     preflight_problems,
 )
+from yieldagent.integrations.linkedin.mapping import (
+    DEFAULT_CAMPAIGN_TYPE,
+    campaign_bidding,
+    campaign_objective,
+    flight_to_run_schedule,
+    money_to_linkedin_amount,
+)
 from yieldagent.integrations.linkedin.targeting import (
     COMPANY_SIZE_TO_STAFF_RANGE,
     FACET_INDUSTRIES,
@@ -157,10 +164,54 @@ class LinkedInConnector:
                             "text": creative.get("primary_text"),
                             "url": creative.get("landing_url"),
                             "image_url": None,
+                            "media_type": None,
                         }
         except Exception:  # noqa: BLE001 — preview is best-effort
             return previews
         return previews
+
+    async def forecast(self, campaign: dict[str, Any]) -> dict[str, Any]:
+        """Forecast impressions/clicks/spend for the first line item. Best-effort.
+
+        Mirrors how the draft is created (same targeting, budget, bidding, flight) so
+        the numbers match what the platform predicts for the proposed campaign.
+        Returns {} on any trouble (too-small audience, start date not in the future,
+        API error) so it never blocks proposing.
+        """
+        try:
+            parsed = Campaign.model_validate(campaign)
+            if not parsed.line_items:
+                return {}
+            line_item = parsed.line_items[0]
+            objective_type = campaign_objective(parsed)
+            bidding = campaign_bidding(line_item, objective_type)
+            schedule = flight_to_run_schedule(line_item.flight)
+            daily_budget = (
+                money_to_linkedin_amount(
+                    line_item.daily_budget.amount, line_item.daily_budget.currency
+                )
+                if line_item.daily_budget
+                else None
+            )
+            async with client_from_env() as client:
+                resolved = await TargetingResolver(client).resolve(
+                    line_item.targeting.audience
+                )
+                return await client.ad_supply_forecast(
+                    campaign_type=DEFAULT_CAMPAIGN_TYPE,
+                    time_range=(schedule["start"], schedule["end"]),
+                    targeting_criteria=resolved.criteria,
+                    total_budget=money_to_linkedin_amount(
+                        line_item.budget.amount, line_item.budget.currency
+                    ),
+                    daily_budget=daily_budget,
+                    objective_type=objective_type,
+                    optimization_target=bidding["optimization_target_type"],
+                    audience_expansion=bool(line_item.audience_expansion),
+                    audience_network=bool(line_item.audience_network),
+                )
+        except Exception:  # noqa: BLE001 — forecast is best-effort, never blocks proposing
+            return {}
 
     async def publish_draft(self, campaign: dict[str, Any]) -> dict[str, Any]:
         # Lazy import: pulls in the MCP server module only when actually creating.
@@ -193,23 +244,57 @@ async def _preview_existing_post(client: Any, post_urn: str) -> dict[str, Any]:
         "text": None,
         "url": None,
         "image_url": None,
+        "media_type": None,
     }
     try:
         post = await client.get_post(post_urn)
     except Exception:  # noqa: BLE001 — preview is best-effort, never blocks proposing
         return preview
     preview["text"] = post.get("commentary")
-    article = (post.get("content") or {}).get("article") or {}
+    content = post.get("content") or {}
+    article = content.get("article") or {}
     preview["headline"] = article.get("title")
     preview["url"] = article.get("source")
-    thumbnail = article.get("thumbnail")
-    if thumbnail:
-        try:
-            image = await client.get_image(thumbnail)
-            preview["image_url"] = image.get("downloadUrl")
-        except Exception:  # noqa: BLE001 — image is optional
-            pass
+    preview["image_url"], preview["media_type"] = await _media_image(client, content)
     return preview
+
+
+async def _image_download_url(client: Any, image_urn: str) -> str | None:
+    """Resolve an `urn:li:image:…` to its temporary download URL (best-effort)."""
+    try:
+        return (await client.get_image(image_urn)).get("downloadUrl")
+    except Exception:  # noqa: BLE001 — image is optional
+        return None
+
+
+async def _media_image(client: Any, content: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Find a display image for a post's content: (image_url, media_type).
+
+    Handles the three shapes a sponsorable post can carry — an article thumbnail, a
+    single image/video (a video resolves to its poster frame), and a multi-image
+    post (first image). `media_type` is "video" or "image" so the UI can badge it.
+    """
+    thumbnail = (content.get("article") or {}).get("thumbnail")
+    if thumbnail and (url := await _image_download_url(client, thumbnail)):
+        return url, "image"
+
+    media_id = (content.get("media") or {}).get("id")
+    if media_id and "video" in media_id:
+        try:
+            thumbnail = (await client.get_video(media_id)).get("thumbnail")
+        except Exception:  # noqa: BLE001 — thumbnail is optional
+            thumbnail = None
+        if thumbnail:
+            return thumbnail, "video"
+    elif media_id and "image" in media_id and (url := await _image_download_url(client, media_id)):
+        return url, "image"
+
+    images = (content.get("multiImage") or {}).get("images") or []
+    if images and (first := images[0].get("id") or images[0].get("image")):
+        if url := await _image_download_url(client, first):
+            return url, "image"
+
+    return None, None
 
 
 def _lcm_url(ad_account_id: str) -> str:

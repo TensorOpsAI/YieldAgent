@@ -9,6 +9,7 @@ import type {
   Money,
   Previews,
   Reach,
+  Forecast,
 } from "@/lib/chat";
 
 type Facet = { label: string; key: string; values: string[] };
@@ -18,6 +19,36 @@ function formatReach(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
   if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
   return String(n);
+}
+
+const fmtNum = (n: number) => n.toLocaleString("en-US");
+const moneyRange = (r: { low: number; high: number; currency: string }) =>
+  `${r.currency} ${r.low.toFixed(2)} - ${r.high.toFixed(2)}`;
+const countRange = (r: { low: number; high: number }) =>
+  `${fmtNum(r.low)} - ${fmtNum(r.high)}`;
+
+/** The forecast panel rows, in the order LinkedIn's own "Forecasted results"
+ *  shows them. Only includes metrics the platform actually returned. */
+function forecastRows(
+  forecast: Forecast | undefined,
+  audienceSize?: number,
+): { label: string; value: string }[] {
+  const rows: { label: string; value: string }[] = [];
+  if (audienceSize && audienceSize > 0)
+    rows.push({ label: "Target audience size", value: `${fmtNum(audienceSize)}+` });
+  if (forecast?.spend) rows.push({ label: "Total spend", value: moneyRange(forecast.spend) });
+  if (forecast?.impressions)
+    rows.push({ label: "Total impressions", value: countRange(forecast.impressions) });
+  if (forecast?.clicks)
+    rows.push({ label: "Total clicks", value: countRange(forecast.clicks) });
+  if (forecast?.ctr)
+    rows.push({
+      label: "CTR",
+      value: `${forecast.ctr.low.toFixed(2)}% - ${forecast.ctr.high.toFixed(2)}%`,
+    });
+  if (forecast?.cpm)
+    rows.push({ label: "Cost per 1,000 impressions", value: moneyRange(forecast.cpm) });
+  return rows;
 }
 
 const BIDDING_LABELS: Record<string, string> = {
@@ -71,6 +102,7 @@ export function ProposalCard({
   unresolved,
   previews,
   reach,
+  forecast,
   awaiting,
   onApprove,
   onReject,
@@ -79,11 +111,13 @@ export function ProposalCard({
   unresolved: Record<string, string[]>;
   previews?: Previews;
   reach?: Reach;
+  forecast?: Forecast;
   awaiting: boolean;
   onApprove: () => void;
   onReject: () => void;
 }) {
   const [submitting, setSubmitting] = useState(false);
+  const [showForecast, setShowForecast] = useState(false);
   const decide = (fn: () => void) => {
     if (submitting) return; // guard against double-submit (one approval only)
     setSubmitting(true);
@@ -92,6 +126,9 @@ export function ProposalCard({
 
   const lineItems = campaign?.line_items ?? [];
   const ads = campaign?.ads ?? [];
+  // Forecast is for the campaign as a whole; size it by the first line item's reach.
+  const firstReach = lineItems[0]?.name ? reach?.[lineItems[0].name as string] : undefined;
+  const fcRows = forecastRows(forecast, firstReach);
   // Any ad whose creative is freshly authored (not an existing post) means
   // approving will PUBLISH a new post on the org page - warn the operator.
   const willCreatePost = Object.values(previews ?? {}).some(
@@ -234,14 +271,23 @@ export function ProposalCard({
                     {preview ? (
                       <div className="mt-2 flex gap-3">
                         {preview.image_url && (
-                          // Ephemeral external LinkedIn media URL (expires) - next/image
-                          // optimization isn't appropriate, so a plain img is correct here.
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={preview.image_url}
-                            alt={preview.headline ?? "Ad creative"}
-                            className="h-16 w-16 shrink-0 rounded-md object-cover ring-1 ring-line"
-                          />
+                          <div className="relative h-16 w-16 shrink-0">
+                            {/* Ephemeral external LinkedIn media URL (expires) - next/image
+                                optimization isn't appropriate, so a plain img is correct. */}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={preview.image_url}
+                              alt={preview.headline ?? "Ad creative"}
+                              className="h-16 w-16 rounded-md object-cover ring-1 ring-line"
+                            />
+                            {preview.media_type === "video" && (
+                              <span className="absolute inset-0 grid place-items-center">
+                                <span className="grid h-6 w-6 place-items-center rounded-full bg-ink/65 pl-0.5 text-[10px] text-white">
+                                  ▶
+                                </span>
+                              </span>
+                            )}
+                          </div>
                         )}
                         <div className="min-w-0">
                           {preview.headline && (
@@ -273,6 +319,40 @@ export function ProposalCard({
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {fcRows.length > 0 && (
+          <div className="mt-4">
+            <button
+              onClick={() => setShowForecast((v) => !v)}
+              className="flex w-full items-center justify-between rounded-xl border border-line bg-paper px-4 py-2.5 text-left transition-colors hover:border-ink/20"
+            >
+              <span className="flex items-center gap-2 text-[13px] font-medium text-ink">
+                <span aria-hidden="true">◴</span> Forecasted results
+              </span>
+              <span className="text-[12px] text-faint">
+                {showForecast ? "Hide" : "Get more info"}
+              </span>
+            </button>
+            {showForecast && (
+              <div className="mt-2 rounded-xl border border-line bg-paper p-4">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  {fcRows.map((r) => (
+                    <div key={r.label} className="flex flex-col">
+                      <span className="text-[11px] uppercase tracking-wide text-faint">
+                        {r.label}
+                      </span>
+                      <span className="nums text-[14px] text-ink">{r.value}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-[11px] leading-relaxed text-faint">
+                  Estimated by the platform for this audience, budget, and bid over the
+                  flight. Ranges are projections, not guarantees.
+                </p>
+              </div>
+            )}
           </div>
         )}
 

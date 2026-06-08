@@ -115,6 +115,14 @@ class Connector(Protocol):
         """A display preview per ad (headline/text/url/image), keyed by ad name."""
         ...
 
+    async def forecast(self, campaign: dict[str, Any]) -> dict[str, Any]:
+        """Forecast results (impressions/clicks/spend ranges) for the campaign.
+
+        Best-effort — returns an empty map when the platform cannot forecast (too
+        small an audience, unsupported setup) or has no forecasting at all.
+        """
+        ...
+
     async def publish_draft(self, campaign: dict[str, Any]) -> dict[str, Any]:
         """Create the campaign as a DRAFT and return the created URNs/ids.
 
