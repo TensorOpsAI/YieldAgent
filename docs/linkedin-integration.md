@@ -1,6 +1,6 @@
 # LinkedIn integration
 
-An MCP server over the LinkedIn Marketing API, plus a thin async HTTP client and the platform-neutral → LinkedIn payload mapping. Any MCP client — the LinkedIn campaign-setup agent in this repo, or your own — can drive LinkedIn through it.
+An MCP server over the LinkedIn Marketing API, plus a thin async HTTP client and the platform-neutral → LinkedIn payload mapping. The web console drives this integration in-process through the LinkedIn connector; any external MCP client can drive it over stdio.
 
 Source: `src/yieldagent/integrations/linkedin/`.
 
@@ -12,23 +12,21 @@ LinkedIn's three-level hierarchy lines up cleanly with the YieldAgent domain mod
 |------------|----------------|---|
 | `Campaign` | Campaign Group | Container; carries the rollup budget. |
 | `LineItem` | Campaign       | Where targeting, schedule, and budget live. |
-| `Ad`       | Creative       | Sponsored Content single-image is the default in this slice. |
+| `Ad`       | Creative       | Single-share Sponsored Content; references an existing post or a minted one. |
 
 This means a planned `yieldagent.domain.Campaign` with N `LineItem`s and M `Ad`s becomes one LinkedIn **Campaign Group**, N **Campaigns**, and M **Creatives**.
 
 ## Tools exposed
 
-The server is implemented with `FastMCP` and registers five tools (see `server.py`):
+The server is implemented with `FastMCP` and registers a single one-shot tool (see `server.py`):
 
-| Tool | Purpose | Notes |
-|---|---|---|
-| `get_ad_account` | Return metadata for the configured account. | Used to sanity-check creds. |
-| `create_campaign_group` | Create a `DRAFT` Campaign Group. | Total budget required. |
-| `create_campaign` | Create a `DRAFT` Campaign under a group. | `objective_type` must be a LinkedIn value (e.g. `LEAD_GENERATION`); requires `targeting_criteria` and `locale`. |
-| `create_creative` | Create a `DRAFT` Creative under a Campaign. | Caller supplies the `content` block. |
-| `publish_draft_campaign` | One-shot chain: create group → campaigns (per `LineItem`) → creatives (per `Ad`). | Accepts a serialized `yieldagent.domain.Campaign`. Used by the agent. |
+| Tool | Purpose |
+|---|---|
+| `publish_draft_campaign` | Create a whole campaign as `DRAFT` in one call: chains create group → one Campaign per `LineItem` (resolving B2B targeting) → one Creative per `Ad` (sponsoring an existing post, or minting a Direct Sponsored Content post). Accepts a serialized `yieldagent.domain.Campaign`. |
 
-Every write tool calls `LinkedInClient.assert_account_allowed` first.
+It calls `LinkedInClient.assert_account_allowed()` before any write, and rolls back partial work if a later step fails (LinkedIn has no transaction).
+
+The create primitives it chains — `get_ad_account`, `create_campaign_group`, `create_campaign`, `create_creative` — are methods on `LinkedInClient` (`client.py`), not separate MCP tools. Call them directly when embedding the client.
 
 ## Environment
 
@@ -49,9 +47,9 @@ Optional:
 
 ## Safety model
 
-LinkedIn has no test-account or sandbox concept (unlike Meta), so the safety model is built from two independent layers:
+LinkedIn has no test-account or sandbox concept, so the safety model is built from two independent layers:
 
-1. **Account allowlist.** `LinkedInClient.assert_account_allowed` refuses to touch any account that is not in `LINKEDIN_ALLOWED_AD_ACCOUNTS` unless `YIELDAGENT_ALLOW_LIVE=1` is set. The guard runs on every write tool, not just the chained `publish_draft_campaign`.
+1. **Account allowlist.** `LinkedInClient.assert_account_allowed` refuses to touch any account that is not in `LINKEDIN_ALLOWED_AD_ACCOUNTS` unless `YIELDAGENT_ALLOW_LIVE=1` is set. `publish_draft_campaign` runs the guard before it creates anything.
 2. **`DRAFT` is the only status the client writes.** `client.py` rejects any attempt to set `ACTIVE` (or `COMPLETED`). Drafts cannot serve impressions or spend budget — they must be activated manually in LinkedIn Campaign Manager. **There is no API path from agent action to live spend.**
 
 Combined, the agent can be wrong in two ways that matter — wrong account or wrong campaign — and neither one can spend money without a human pressing a button in Campaign Manager.
@@ -66,7 +64,7 @@ The server speaks MCP over stdio:
 python -m yieldagent.integrations.linkedin.server
 ```
 
-The LinkedIn campaign-setup agent spawns this as a subprocess via `MultiServerMCPClient` (`agents/linkedin_setup/graph.py:_default_linkedin_mcp_tool_loader`). Other MCP clients can connect to it the same way:
+The web console does not spawn this subprocess — it calls `publish_draft_campaign` in-process through the LinkedIn connector (`connectors/linkedin.py`). External MCP clients connect over stdio the same way:
 
 ```python
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -86,18 +84,17 @@ tools = await client.get_tools()
 
 `mapping.py` is the single place where platform-neutral domain types are translated to LinkedIn payloads. Highlights:
 
-- **Objectives.** `Objective.leads` → `LEAD_GENERATION`, `Objective.sales` → `WEBSITE_CONVERSIONS`, `Objective.traffic` → `WEBSITE_VISITS`, etc. Full table in `OBJECTIVE_TO_LINKEDIN`.
-- **Budgets are strings, not minor units.** LinkedIn's API expects `{"amount": "1000.00", "currencyCode": "USD"}`. No zero-decimal special cases.
-- **Flight dates.** `Flight.start_date` becomes UTC midnight; `Flight.end_date` becomes 23:59:59.999999 UTC of that day (inclusive end). Encoded as epoch-millisecond `runSchedule` ints.
-- **Geos → URN lookup.** LinkedIn does **not** accept ISO codes — every location is a `urn:li:geo:{id}` URN. A small built-in table (`ISO_TO_LINKEDIN_GEO_URN`) covers ~15 common countries; everything else is dropped with a fallback to `US`. Production use should resolve via the LinkedIn typeahead endpoint (`/geo` typeahead).
-- **B2B facets need URN resolution.** `audience.industries`, `job_functions`, `seniorities`, `company_sizes`, and `skills` from the request are carried through the domain model and resolved to LinkedIn URNs via the targeting resolver; any value that resolves to nothing is **not sent** (we never guess a URN). They are surfaced in the publish result under `notes.unresolved_b2b_targeting` so the operator knows to add them in Campaign Manager before activation.
-- **Locale.** Required by LinkedIn on every Campaign. Derived from the first audience geo (`country` field), defaults to `en/US`.
-- **Creatives.** Built as single-share Sponsored Content (`article` block). Headline → `article.title`, primary text → `commentary`, CTA upper-snake-cased.
+- **Objectives.** `Objective.awareness` → `BRAND_AWARENESS`, `Objective.leads` → `LEAD_GENERATION`, `Objective.sales` → `WEBSITE_CONVERSIONS`, `Objective.traffic` → `WEBSITE_VISITS`, etc. Full table in `OBJECTIVE_TO_LINKEDIN`.
+- **Budgets are strings, not minor units.** LinkedIn's API expects `{"amount": "1000.00", "currencyCode": "USD"}`. No zero-decimal special cases. A `LineItem` carries a total budget and an optional `daily_budget`; both are sent when present.
+- **Bidding.** `campaign_bidding` maps the line item's strategy: `maximum_delivery` (default) auto-bids with the objective's optimization target (`MAX_IMPRESSION`/`MAX_CLICK`/…) and no manual price; `cost_cap` and `manual` carry `bid_amount` as the cap/bid. `audience_expansion` and the LinkedIn Audience Network are off by default.
+- **Flight dates.** `Flight.start_date` becomes UTC midnight; `Flight.end_date` becomes 23:59:59.999999 UTC of that day (inclusive end). Encoded as epoch-millisecond `runSchedule` ints. The Campaign Group's schedule spans the earliest start and latest end across its line items.
+- **Geos → URN.** LinkedIn does **not** accept ISO codes — every location is a `urn:li:geo:{id}` URN. The resolver (`targeting.py`) expands each ISO 3166-1 alpha-2 code to a country name via `pycountry`, then resolves it through the LinkedIn **locations typeahead** — so any country works, not a hardcoded shortlist. A code that does not expand or match is surfaced as unresolved; only when *nothing* resolves does it fall back to the default geo (`urn:li:geo:103644278`, US), since LinkedIn requires at least one location.
+- **B2B facets are resolved, not dropped.** Each `Audience` facet is resolved to LinkedIn URNs and sent in `targetingCriteria`: `seniorities` and `job_functions` against the standardized `/seniorities` and `/functions` taxonomies (name match); `industries`, `job_titles`, and `skills` via the typeahead finder; `company_sizes` via the static `COMPANY_SIZE_TO_STAFF_RANGE` map. A name that resolves to nothing is **never guessed** — it is surfaced in the publish result under `notes.unresolved_b2b_targeting` so the operator can add it manually in Campaign Manager.
+- **Locale.** Required on every Campaign, and it must be a *supported* member-UI interface locale (e.g. `en_PT` is rejected). `line_item_locale` looks the first audience geo up in `SUPPORTED_LOCALE_BY_COUNTRY` and falls back to `en_US` for anything LinkedIn does not support.
+- **Creatives — two paths.** When the ad's creative has an `existing_post_urn`, the Creative references that hand-published post directly (the console's default). Otherwise the integration mints a Direct Sponsored Content post authored by the org: an `article` block (headline → `article.title`, description → `article.description`, landing URL → `source`) when there's a `landing_url`, else a text-only post. The post commentary is `primary_text` → `headline` → `name`.
 
 ## Known limits
 
-- **No image/video uploads.** Creatives reference `image_url` / `video_url` as inputs, but the agent does not yet upload assets via the LinkedIn `/assets` API and substitute the returned URNs. Real campaigns need a separate upload pass.
-- **B2B targeting is not wired.** See above. The single biggest gap vs. a fully usable LinkedIn agent — fixing it means wiring the typeahead resolver into `mapping.py`.
-- **Sponsored Content only.** Other campaign formats (Message Ads, Conversation Ads, Dynamic Ads, Text Ads) are out of scope for this slice. `DEFAULT_CAMPAIGN_TYPE` in `mapping.py` is hardcoded to `SPONSORED_UPDATES`.
-- **Total-budget only.** The chained `publish_draft_campaign` uses `totalBudget`. Daily budgets are supported by the lower-level `create_campaign` tool but the LineItem domain type currently only carries one budget that maps to total.
-- **No update/delete.** The tool surface is strictly create-only. Edits and pauses on existing campaigns are out of scope for this slice.
+- **No asset uploads for minted posts.** When the integration mints its own Direct Sponsored Content post, it cannot yet upload an `image_url` / `video_url` via the LinkedIn Images/Videos API and attach the returned URN, so a minted post renders with LinkedIn's default link preview. Sponsoring an `existing_post_urn` carries that post's real media, so it is the way to ship rich creative today.
+- **Sponsored Content only.** Other campaign formats (Message Ads, Conversation Ads, Dynamic Ads, Text Ads) are out of scope. `DEFAULT_CAMPAIGN_TYPE` in `mapping.py` is hardcoded to `SPONSORED_UPDATES`.
+- **No update/delete.** The MCP surface is create-only (`publish_draft_campaign` does roll back its own partial work on failure). Edits and pauses on existing campaigns are out of scope.
