@@ -8,7 +8,7 @@ const PHRASES = [
   "Thinking",
   "Cooking",
   "Pondering",
-  "Consulting LinkedIn",
+  "Consulting the platform",
   "Sizing the audience",
   "Crunching targeting",
   "Drafting copy",
@@ -22,10 +22,11 @@ const PHRASES = [
 ];
 
 export function ThinkingIndicator() {
-  const [i, setI] = useState(0);
+  // Start somewhere random (lazy init) so each thinking session feels different.
+  // The component only mounts client-side once the agent is busy, so there is no
+  // SSR hydration mismatch, and the effect stays free of synchronous setState.
+  const [i, setI] = useState(() => Math.floor(Math.random() * PHRASES.length));
   useEffect(() => {
-    // Start somewhere random so each thinking session feels different.
-    setI(Math.floor(Math.random() * PHRASES.length));
     const id = setInterval(() => setI((n) => (n + 1) % PHRASES.length), 2200);
     return () => clearInterval(id);
   }, []);
