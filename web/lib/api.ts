@@ -43,13 +43,14 @@ export type CampaignRow = {
 export type Summary = { campaigns: number; drafts: number };
 
 export async function fetchCampaigns(): Promise<CampaignRow[]> {
-  const res = await fetch(`${API_BASE}/api/campaigns`);
+  // no-store: the dashboard must reflect a just-created draft, never a cached list.
+  const res = await fetch(`${API_BASE}/api/campaigns`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch campaigns");
   return res.json();
 }
 
 export async function fetchSummary(): Promise<Summary> {
-  const res = await fetch(`${API_BASE}/api/summary`);
+  const res = await fetch(`${API_BASE}/api/summary`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch summary");
   return res.json();
 }

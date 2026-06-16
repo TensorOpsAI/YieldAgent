@@ -142,7 +142,7 @@ export function ProposalCard({
     (unresolved?.[key] ?? []).includes(value);
 
   return (
-    <div className="rise overflow-hidden rounded-2xl border border-ink/10 bg-surface shadow-[0_8px_30px_-12px_rgba(13,16,14,0.25)]">
+    <div className="pop-in overflow-hidden rounded-2xl border border-ink/10 bg-surface shadow-[0_8px_30px_-12px_rgba(13,16,14,0.25)]">
       <div className="flex items-center justify-between border-b border-line bg-ink px-5 py-3">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-brand live-dot" />

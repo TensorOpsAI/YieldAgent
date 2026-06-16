@@ -11,7 +11,7 @@ import {
 function platformDetail(p: AdPlatform): string {
   if (p.can_create) return "Connected · campaigns enabled";
   if (p.connected) return "Connected · creation coming soon";
-  return "Not connected";
+  return "Coming soon";
 }
 
 function Dot({ on }: { on: boolean }) {
@@ -21,6 +21,14 @@ function Dot({ on }: { on: boolean }) {
         on ? "bg-brand live-dot shadow-[0_0_0_3px_var(--color-brand-soft)]" : "bg-faint/40"
       }`}
     />
+  );
+}
+
+function SoonTag() {
+  return (
+    <span className="rounded-md bg-paper px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-faint/70 ring-1 ring-line/60">
+      Soon
+    </span>
   );
 }
 
@@ -108,11 +116,13 @@ export default function Connections() {
           {adPlatforms.map((c) => (
             <div
               key={c.platform}
-              className="rounded-xl border border-line bg-surface p-4"
+              className={`rounded-xl border border-line bg-surface p-4 ${
+                c.can_create ? "" : "opacity-70"
+              }`}
             >
               <div className="flex items-center justify-between">
                 <span className="font-medium text-ink">{c.platform}</span>
-                <Dot on={c.can_create} />
+                {c.can_create ? <Dot on /> : <SoonTag />}
               </div>
               <div className="mt-0.5 text-[13px] text-muted">
                 {platformDetail(c)}

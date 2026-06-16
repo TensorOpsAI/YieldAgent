@@ -100,6 +100,15 @@ class Connector(Protocol):
         """Estimate how many members an audience reaches."""
         ...
 
+    async def list_recent_posts(self, limit: int = 12) -> list[dict[str, Any]]:
+        """Recent sponsorable posts so the operator can pick one by description.
+
+        Returns `[{urn, text, media_type}]` newest first (empty when the platform
+        has no such concept or the lookup fails). The agent matches the operator's
+        description ("our webinar post") to a `urn` and uses it as the ad creative.
+        """
+        ...
+
     async def quote_budget_floor(self, plan: dict[str, Any]) -> dict[str, Any]:
         """Quote the platform's real per-plan budget minimums.
 

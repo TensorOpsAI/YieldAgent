@@ -96,6 +96,10 @@ async def _drive(inp: Any, thread_id: str, model: str | None) -> AsyncIterator[E
                             "tool_result",
                             {
                                 "name": name,
+                                # "error" when the tool raised (LangChain sets this on
+                                # the ToolMessage) so the UI can flag the step instead
+                                # of showing a green tick on a failed call.
+                                "status": getattr(message, "status", "success"),
                                 "summary": _summarize(content),
                                 # Full structured result so the UI can show it in an
                                 # expandable panel, not just the truncated summary.
