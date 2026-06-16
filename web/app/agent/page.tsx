@@ -12,7 +12,12 @@ import {
   type Reach,
   type ToolArgs,
 } from "@/lib/chat";
-import { fetchProviders, type Provider } from "@/lib/api";
+import {
+  fetchAdPlatforms,
+  fetchProviders,
+  type AdPlatform,
+  type Provider,
+} from "@/lib/api";
 import { ProposalCard } from "@/components/ProposalCard";
 import { ModelPicker } from "@/components/ModelPicker";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
@@ -28,6 +33,7 @@ type Item =
       args: ToolArgs;
       summary: string | null;
       result?: unknown;
+      status?: string;
       count: number;
     }
   | {
@@ -46,6 +52,7 @@ export default function AgentConsole() {
   const [busy, setBusy] = useState(false);
   const [awaiting, setAwaiting] = useState(false);
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [adPlatforms, setAdPlatforms] = useState<AdPlatform[]>([]);
   const [model, setModel] = useState("gemini-3.5-flash");
   const threadId = useRef<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -66,6 +73,12 @@ export default function AgentConsole() {
         if (preferred) setModel(preferred);
       })
       .catch(() => undefined);
+  }, []);
+
+  // Platform chips reflect live connection state (same source as the Connections
+  // page), so they are never hardcoded - a new connector shows up on its own.
+  useEffect(() => {
+    fetchAdPlatforms().then(setAdPlatforms).catch(() => undefined);
   }, []);
 
   // Keep the composer focused so the operator can always just type (no re-click).
@@ -146,7 +159,12 @@ export default function AgentConsole() {
           const real = prev.length - 1 - idx;
           const copy = [...prev];
           const t = copy[real] as Extract<Item, { kind: "tool" }>;
-          copy[real] = { ...t, summary: ev.data.summary, result: ev.data.result };
+          copy[real] = {
+            ...t,
+            summary: ev.data.summary,
+            result: ev.data.result,
+            status: ev.data.status,
+          };
           return copy;
         });
         break;
@@ -218,11 +236,30 @@ export default function AgentConsole() {
   return (
     <div className="flex h-full flex-col">
       {/* Status bar */}
-      <div className="flex items-center gap-3 border-b border-line px-7 py-2.5">
-        <span className="inline-flex items-center gap-1.5 rounded-md bg-paper px-2 py-1 text-[12px] font-medium text-ink ring-1 ring-line">
-          <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-          LinkedIn
-        </span>
+      <div className="flex items-center gap-2 border-b border-line px-7 py-2.5">
+        {adPlatforms.map((p) =>
+          p.can_create ? (
+            <span
+              key={p.platform}
+              className="inline-flex items-center gap-1.5 rounded-md bg-paper px-2 py-1 text-[12px] font-medium text-ink ring-1 ring-line"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-brand live-dot" />
+              {p.platform}
+            </span>
+          ) : (
+            <span
+              key={p.platform}
+              title={`${p.platform} support is coming soon`}
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium text-faint ring-1 ring-line/60"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-faint/40" />
+              {p.platform}
+              <span className="rounded bg-paper px-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-faint/70 ring-1 ring-line/60">
+                soon
+              </span>
+            </span>
+          ),
+        )}
         <div className="ml-auto flex items-center gap-3 text-[12px]">
           {providers.map((p) => (
             <span key={p.id} title={p.reason ?? "connected"} className="flex items-center gap-1.5">
@@ -296,6 +333,7 @@ export default function AgentConsole() {
                   args={it.args}
                   summary={it.summary}
                   result={it.result}
+                  status={it.status}
                   count={it.count}
                 />
               );
@@ -316,10 +354,10 @@ export default function AgentConsole() {
             return (
               <div
                 key={i}
-                className="rise rounded-xl border border-brand/30 bg-brand-soft px-4 py-3.5"
+                className="pop-in rounded-xl border border-brand/30 bg-brand-soft px-4 py-3.5"
               >
                 <div className="flex items-center gap-2 text-[14px] font-semibold text-brand-strong">
-                  <span className="grid h-5 w-5 place-items-center rounded-full bg-brand text-[11px] text-white">
+                  <span className="check-pop grid h-5 w-5 place-items-center rounded-full bg-brand text-[11px] text-white">
                     ✓
                   </span>
                   Draft created on LinkedIn

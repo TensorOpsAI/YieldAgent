@@ -72,6 +72,50 @@ body {
   animation: pulse-dot 1.6s ease-in-out infinite;
 }
 
+/* The proposal is the climax - a touch of scale plus the rise gives it presence. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.pop-in {
+  animation: pop-in 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Success checkmark springs in (slight overshoot) to land the "draft created" beat. */
+@keyframes check-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.check-pop {
+  animation: check-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) 0.06s both;
+}
+
+/* Respect reduced-motion: keep things visible, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .pop-in,
+  .check-pop,
+  .live-dot {
+    animation: none;
+  }
+}
+
 ::selection {
   background: var(--color-brand);
   color: #fff;

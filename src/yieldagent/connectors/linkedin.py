@@ -9,6 +9,7 @@ any `integrations.linkedin` module directly.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from yieldagent.domain import Audience, BiddingStrategy, Campaign
@@ -116,6 +117,47 @@ class LinkedInConnector:
         async with client_from_env() as client:
             resolved = await TargetingResolver(client).resolve(parsed)
             return await client.audience_count(resolved.criteria)
+
+    async def list_recent_posts(self, limit: int = 12) -> list[dict[str, Any]]:
+        """Recent sponsorable org posts: `[{urn, text, media_type}]`, newest first.
+
+        Lets the operator name a post by description ("our webinar post") instead
+        of pasting a URN: the agent reads the texts and picks the match. Only
+        original posts that carry text are returned, since reshares and bare
+        references cannot be sponsored. Best-effort - returns `[]` on any trouble
+        rather than blocking the conversation.
+        """
+        try:
+            async with client_from_env() as client:
+                org_urn = LinkedInConfig.from_env().organization_urn
+                if not org_urn:
+                    account = await client.get_ad_account()
+                    org_urn = (account or {}).get("reference")
+                if not org_urn or not str(org_urn).startswith("urn:li:organization:"):
+                    return []
+                raw = await client.list_organization_posts(
+                    org_urn, count=max(limit * 2, 20)
+                )
+        except Exception:  # noqa: BLE001 — discovery is best-effort, never blocks
+            return []
+
+        posts: list[dict[str, Any]] = []
+        for el in raw:
+            if (el.get("lifecycleState") or "") != "PUBLISHED":
+                continue
+            text = _clean_commentary(el.get("commentary") or "")
+            if not text:
+                continue  # no text => a reshare/reference we can neither match nor sponsor
+            posts.append(
+                {
+                    "urn": el.get("id"),
+                    "text": text,
+                    "media_type": _post_media_type(el.get("content") or {}),
+                }
+            )
+            if len(posts) >= limit:
+                break
+        return posts
 
     async def quote_budget_floor(self, plan: dict[str, Any]) -> dict[str, Any]:
         """Live per-plan floor via `adBudgetPricing`; falls back to the table.
@@ -277,6 +319,29 @@ class LinkedInConnector:
             ) from exc
         result["manage_url"] = _lcm_url(LinkedInConfig.from_env().ad_account_id)
         return result
+
+
+def _clean_commentary(text: str) -> str:
+    """A post's commentary as plain, matchable text: strip `@[Name](urn:…)` mention
+    markup down to the name, drop escapes, collapse whitespace, and truncate."""
+    text = re.sub(r"@\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    text = text.replace("\\", "")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:160]
+
+
+def _post_media_type(content: dict[str, Any]) -> str:
+    """Classify a post's content so the agent can describe it: image/video/article/text."""
+    if "article" in content:
+        return "article"
+    if "multiImage" in content:
+        return "image"
+    media_id = str((content.get("media") or {}).get("id") or "")
+    if "video" in media_id:
+        return "video"
+    if "image" in media_id:
+        return "image"
+    return "text"
 
 
 def _audience_from_plan(plan: dict[str, Any]) -> dict[str, Any] | None:

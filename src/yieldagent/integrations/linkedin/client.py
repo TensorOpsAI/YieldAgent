@@ -370,6 +370,30 @@ class LinkedInClient(BaseHttpClient):
         key = quote(str(post_urn), safe="")
         return await self._request("GET", f"/posts/{key}")
 
+    async def list_organization_posts(
+        self, org_urn: str, *, count: int = 20
+    ) -> list[dict[str, Any]]:
+        """List an organization's recent posts, newest first.
+
+        Uses the `posts` finder (`q=author`); the author URN must be pre-encoded
+        into the query string (like the other finders), so this bypasses the
+        params-based `_request`. Returns the raw `elements` so the caller decides
+        which are sponsorable.
+        """
+        query = (
+            f"q=author&author={quote(str(org_urn), safe='')}"
+            f"&count={count}&sortBy=LAST_MODIFIED"
+        )
+        url = httpx.URL(f"{_BASE_URL}/posts").copy_with(query=query.encode())
+        response = await self._http.request("GET", url, headers=self._headers)
+        if response.status_code >= 400:
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = response.text
+            raise LinkedInError(response.status_code, payload)
+        return response.json().get("elements", [])
+
     async def get_image(self, image_urn: str) -> dict[str, Any]:
         """Resolve an `urn:li:image:…` to a temporary `downloadUrl` for display."""
         key = quote(str(image_urn), safe="")

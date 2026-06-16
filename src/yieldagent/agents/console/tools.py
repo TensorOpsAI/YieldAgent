@@ -103,6 +103,22 @@ async def preview_targeting(platform: str, audience: dict[str, Any]) -> dict[str
 
 
 @tool
+async def list_recent_posts(platform: str) -> list[dict[str, Any]]:
+    """List the advertiser's recent posts so you can promote one the operator names
+    by description instead of asking them for a URN.
+
+    Call this when the operator refers to a post in words ("our webinar post", "the
+    open-source announcement", "our latest post") rather than giving a URN. Returns
+    `[{urn, text, media_type}]`, newest first. Read the texts, pick the one that
+    matches, confirm your choice with the operator in one short line, then set that
+    `urn` as the ad's `existing_post_urn`. If nothing clearly matches, do not guess:
+    present about five of the most recent as a short numbered menu (a one-line topic
+    each) and ask which one. An empty list means none were found - ask for a URN.
+    """
+    return await get_connector(platform).list_recent_posts()
+
+
+@tool
 async def estimate_reach(platform: str, audience: dict[str, Any]) -> dict[str, int]:
     """Estimate how many members an audience reaches on a platform.
 
@@ -264,6 +280,7 @@ CONSOLE_TOOLS = [
     describe_platform,
     list_targeting_options,
     search_targeting,
+    list_recent_posts,
     preview_targeting,
     estimate_reach,
     quote_budget_floor,
